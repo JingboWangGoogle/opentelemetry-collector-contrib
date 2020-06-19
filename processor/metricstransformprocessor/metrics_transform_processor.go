@@ -22,8 +22,6 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/consumer/pdatautil"
-
-	metricspb "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1"
 )
 
 type metricsTransformProcessor struct {
@@ -91,77 +89,4 @@ func (mtp *metricsTransformProcessor) transform(md pdata.Metrics) pdata.Metrics 
 	}
 
 	return pdatautil.MetricsFromMetricsData(mds)
-}
-
-// update updates the original metric content in the metricPtr pointer
-func (mtp *metricsTransformProcessor) update(metricPtr *metricspb.Metric) {
-	// metric name update
-	if mtp.newname != "" {
-		metricPtr.MetricDescriptor.Name = mtp.newname
-	}
-
-	for _, op := range mtp.operations {
-		// label key update
-		if op.Action == UpdateLabel && op.NewLabel != "" {
-			if mtp.validNewLabel(metricPtr.MetricDescriptor.LabelKeys, op.NewLabel) {
-				for _, label := range metricPtr.MetricDescriptor.LabelKeys {
-					if label.GetKey() == op.Label {
-						label.Key = op.NewLabel
-					}
-				}
-			} else {
-				log.Printf("error running \"metrics_transform\" processor due to invalid \"new_label\": %v, which might be caused by a collision with existing label on metric named: %v", op.NewLabel, metricPtr.MetricDescriptor.Name)
-			}
-		}
-	}
-}
-
-// insert inserts a new copy of the metricPtr content into the metricPtrs slice
-func (mtp *metricsTransformProcessor) insert(metricPtr *metricspb.Metric, metricPtrs []*metricspb.Metric) []*metricspb.Metric {
-	metricCopy := mtp.createCopy(metricPtr)
-	mtp.update(metricCopy)
-	return append(metricPtrs, metricCopy)
-}
-
-// createCopy creates a new copy of the input metric
-func (mtp *metricsTransformProcessor) createCopy(metricPtr *metricspb.Metric) *metricspb.Metric {
-	copyMetricDescriptor := *metricPtr.MetricDescriptor
-	copyLabelKeys := make([]*metricspb.LabelKey, 0)
-	for _, labelKey := range copyMetricDescriptor.LabelKeys {
-		copyLabelKeys = append(
-			copyLabelKeys,
-			&metricspb.LabelKey{
-				Key:         labelKey.Key,
-				Description: labelKey.Description,
-			},
-		)
-	}
-	copyMetricDescriptor.LabelKeys = copyLabelKeys
-
-	copy := &metricspb.Metric{
-		MetricDescriptor: &copyMetricDescriptor,
-		Timeseries:       metricPtr.Timeseries,
-		Resource:         metricPtr.Resource,
-	}
-	return copy
-}
-
-// validNewName determines if the new name is a valid one. An invalid one is one that already exists
-func (mtp *metricsTransformProcessor) validNewName(metricPtrs []*metricspb.Metric) bool {
-	for _, metric := range metricPtrs {
-		if metric.MetricDescriptor.Name == mtp.newname {
-			return false
-		}
-	}
-	return true
-}
-
-// validNewLabel determines if the new label is a valid one. An invalid one is one that already exists
-func (mtp *metricsTransformProcessor) validNewLabel(labelKeys []*metricspb.LabelKey, newLabel string) bool {
-	for _, label := range labelKeys {
-		if label.Key == newLabel {
-			return false
-		}
-	}
-	return true
 }
