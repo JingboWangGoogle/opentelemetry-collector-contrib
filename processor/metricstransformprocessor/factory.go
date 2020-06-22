@@ -81,7 +81,7 @@ func validateConfiguration(config Config) error {
 	}
 
 	if config.Action != Update && config.Action != Insert {
-		return fmt.Errorf("error creating \"metrics_transform\" processor due to unsupported \"action\": %v, the supported actions are \"insert\" and \"update\"", config.Action)
+		return fmt.Errorf("error creating \"metrics_transform\" processor due to unsupported config \"action\": %v, the supported actions are \"insert\" and \"update\"", config.Action)
 	}
 
 	if config.Action == Insert && config.NewName == "" {
@@ -89,6 +89,10 @@ func validateConfiguration(config Config) error {
 	}
 
 	for i, op := range config.Operations {
+		if op.Action != UpdateLabel && op.Action != AggregateLabels && op.Action != AggregateLabelValues {
+			return fmt.Errorf("error creating \"metrics_transform\" processor due to unsupported operation \"action\": %v, the supported actions are \"update_label\", \"aggregate_labels\", and \"aggregate_label_values\"", op.Action)
+		}
+
 		if op.Action == UpdateLabel && op.Label == "" {
 			return fmt.Errorf("error creating \"metrics_transform\" processor due to missing required field \"label\" while \"action\" is update_label in the %vth operation", i)
 		}
