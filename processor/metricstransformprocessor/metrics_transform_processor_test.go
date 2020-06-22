@@ -28,15 +28,17 @@ import (
 )
 
 type metricsTransformTest struct {
-	name       string // test name
-	metricName string
-	action     ConfigAction
-	newName    string
-	operations []Operation
-	inMN       []string // input Metric names
-	outMN      []string // output Metric names
-	inLabels   []string
-	outLabels  []string
+	name           string // test name
+	metricName     string
+	action         ConfigAction
+	newName        string
+	operations     []Operation
+	inMN           []string // input Metric names
+	outMN          []string // output Metric names
+	inLabels       []string
+	outLabels      []string
+	inLabelValues  [][]string
+	outLabelValues [][]string
 }
 
 var (
@@ -66,6 +68,28 @@ var (
 		"label2",
 	}
 
+	inLabelValues = [][]string{
+		{
+			"label1-value1",
+			"label2-value1",
+		},
+		{
+			"label1-value2",
+			"label2-value2",
+		},
+	}
+
+	outLabelValues = [][]string{
+		{
+			"label1-value1/new",
+			"label2-value1",
+		},
+		{
+			"label1-value2",
+			"label2-value2",
+		},
+	}
+
 	validUpateLabelOperation = Operation{
 		Action:   UpdateLabel,
 		Label:    "label1",
@@ -76,6 +100,28 @@ var (
 		Action:   UpdateLabel,
 		Label:    "label1",
 		NewLabel: "label2",
+	}
+
+	validUpdateLabelValueOperation = Operation{
+		Action: UpdateLabel,
+		Label:  "label1",
+		ValueActions: []ValueAction{
+			{
+				Value:    "label1-value1",
+				NewValue: "label1-value1/new",
+			},
+		},
+	}
+
+	invalidUpdateLabelValueOperation = Operation{
+		Action: UpdateLabel,
+		Label:  "label1",
+		ValueActions: []ValueAction{
+			{
+				Value:    "label1-value1",
+				NewValue: "label1-value2",
+			},
+		},
 	}
 
 	standardTests = []metricsTransformTest{
@@ -116,6 +162,30 @@ var (
 			inLabels:   inLabels,
 			outLabels:  inLabels,
 		},
+		{
+			name:           "metric_label_value_update",
+			metricName:     "metric1",
+			action:         "update",
+			operations:     []Operation{validUpdateLabelValueOperation},
+			inMN:           inMetricNames,
+			outMN:          inMetricNames,
+			inLabels:       inLabels,
+			outLabels:      inLabels,
+			inLabelValues:  inLabelValues,
+			outLabelValues: outLabelValues,
+		},
+		{
+			name:           "metric_label_value_invalid_update",
+			metricName:     "metric1",
+			action:         "update",
+			operations:     []Operation{invalidUpdateLabelValueOperation},
+			inMN:           inMetricNames,
+			outMN:          inMetricNames,
+			inLabels:       inLabels,
+			outLabels:      inLabels,
+			inLabelValues:  inLabelValues,
+			outLabelValues: inLabelValues,
+		},
 		// INSERT
 		{
 			name:       "metric_name_insert",
@@ -135,6 +205,19 @@ var (
 			outMN:      outMetricNamesInsert,
 			inLabels:   inLabels,
 			outLabels:  outLabels,
+		},
+		{
+			name:           "metric_label_value_update_with_metric_insert",
+			metricName:     "metric1",
+			action:         "insert",
+			newName:        "metric1/new",
+			operations:     []Operation{validUpdateLabelValueOperation},
+			inMN:           inMetricNames,
+			outMN:          outMetricNamesInsert,
+			inLabels:       inLabels,
+			outLabels:      inLabels,
+			inLabelValues:  inLabelValues,
+			outLabelValues: outLabelValues,
 		},
 	}
 )
@@ -169,6 +252,7 @@ func TestMetricsTransformProcessor(t *testing.T) {
 
 			// contruct metrics data to feed into the processor
 			for idx, in := range test.inMN {
+				// construct label keys
 				labels := make([]*metricspb.LabelKey, 0)
 				if in == test.metricName {
 					for _, l := range test.inLabels {
@@ -180,11 +264,38 @@ func TestMetricsTransformProcessor(t *testing.T) {
 						)
 					}
 				}
+				// construct label values
+				// TODO: move these to helper functions
+				labelValueSets := make([][]*metricspb.LabelValue, 0)
+				for _, values := range test.inLabelValues {
+					labelValueSet := make([]*metricspb.LabelValue, 0)
+					for _, value := range values {
+						labelValueSet = append(
+							labelValueSet,
+							&metricspb.LabelValue{
+								Value: value,
+							},
+						)
+					}
+					labelValueSets = append(labelValueSets, labelValueSet)
+				}
+				timeseries := make([]*metricspb.TimeSeries, 0)
+				for _, valueSet := range labelValueSets {
+					timeseries = append(
+						timeseries,
+						&metricspb.TimeSeries{
+							LabelValues: valueSet,
+						},
+					)
+				}
+
+				// compose the metric
 				md.Metrics[idx] = &metricspb.Metric{
 					MetricDescriptor: &metricspb.MetricDescriptor{
 						Name:      in,
 						LabelKeys: labels,
 					},
+					Timeseries: timeseries,
 				}
 			}
 
@@ -208,33 +319,36 @@ func TestMetricsTransformProcessor(t *testing.T) {
 			require.Equal(t, 3, len(gotMD))
 			assert.EqualValues(t, consumerdata.MetricsData{}, gotMD[0])
 			require.Equal(t, len(test.outMN), len(gotMD[1].Metrics))
+
+			targetName := test.metricName
+			if test.newName != "" {
+				targetName = test.newName
+			}
 			for idx, out := range gotMD[1].Metrics {
 				// check name
 				assert.Equal(t, test.outMN[idx], out.MetricDescriptor.Name)
-
-				//check labels
-				if test.action == Insert {
-					// check the inserted is correctly updated
-					if out.MetricDescriptor.Name == test.newName {
-						for lidx, l := range out.MetricDescriptor.LabelKeys {
-							assert.Equal(t, test.outLabels[lidx], l.Key)
+				// check labels
+				// check the updated or inserted is correctly updated
+				if out.MetricDescriptor.Name == targetName {
+					for lidx, l := range out.MetricDescriptor.LabelKeys {
+						assert.Equal(t, test.outLabels[lidx], l.Key)
+					}
+					for tidx, ts := range out.Timeseries {
+						for lidx, v := range ts.LabelValues {
+							assert.Equal(t, test.outLabelValues[tidx][lidx], v.Value)
 						}
 					}
-					// check the original is untouched
+				}
+				// check the original is untouched if insert
+				if test.action == Insert {
 					if out.MetricDescriptor.Name == test.metricName {
 						for lidx, l := range out.MetricDescriptor.LabelKeys {
 							assert.Equal(t, test.inLabels[lidx], l.Key)
 						}
-					}
-				} else {
-					targetName := test.metricName
-					if test.newName != "" {
-						targetName = test.newName
-					}
-
-					if out.MetricDescriptor.Name == targetName {
-						for lidx, l := range out.MetricDescriptor.LabelKeys {
-							assert.Equal(t, test.outLabels[lidx], l.Key)
+						for tidx, ts := range out.Timeseries {
+							for lidx, v := range ts.LabelValues {
+								assert.Equal(t, test.inLabelValues[tidx][lidx], v.Value)
+							}
 						}
 					}
 				}

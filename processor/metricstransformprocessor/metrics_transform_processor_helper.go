@@ -65,6 +65,7 @@ func (mtp *metricsTransformProcessor) insert(metricPtr *metricspb.Metric, metric
 
 // createCopy creates a new copy of the input metric
 func (mtp *metricsTransformProcessor) createCopy(metricPtr *metricspb.Metric) *metricspb.Metric {
+	// copy Descriptor
 	copyMetricDescriptor := *metricPtr.MetricDescriptor
 	copyLabelKeys := make([]*metricspb.LabelKey, 0)
 	for _, labelKey := range copyMetricDescriptor.LabelKeys {
@@ -78,9 +79,32 @@ func (mtp *metricsTransformProcessor) createCopy(metricPtr *metricspb.Metric) *m
 	}
 	copyMetricDescriptor.LabelKeys = copyLabelKeys
 
+	// copy Timeseries
+	copyTimeseries := make([]*metricspb.TimeSeries, 0)
+	for _, t := range metricPtr.Timeseries {
+		copyLabelValues := make([]*metricspb.LabelValue, 0)
+		for _, v := range t.LabelValues {
+			copyLabelValues = append(
+				copyLabelValues,
+				&metricspb.LabelValue{
+					Value:    v.Value,
+					HasValue: v.HasValue,
+				},
+			)
+		}
+		copyTimeseries = append(
+			copyTimeseries,
+			&metricspb.TimeSeries{
+				StartTimestamp: t.StartTimestamp,
+				LabelValues:    copyLabelValues,
+				Points:         t.Points,
+			},
+		)
+	}
+
 	copy := &metricspb.Metric{
 		MetricDescriptor: &copyMetricDescriptor,
-		Timeseries:       metricPtr.Timeseries,
+		Timeseries:       copyTimeseries,
 		Resource:         metricPtr.Resource,
 	}
 	return copy
