@@ -64,11 +64,26 @@ func (mtp *metricsTransformProcessor) update(metricPtr *metricspb.Metric, transf
 			// labelIdxs is a slice containing the indices of the labels to keep. This is needed because label values are ordered in the same order as the labels
 			labelIdxs := make([]int, 0)
 			for idx, label := range metricPtr.MetricDescriptor.LabelKeys {
-				_, ok := labelSet[label]
+				_, ok := labelSet[label.Key]
 				if ok {
 					labelIdxs = append(labelIdxs, idx)
 				}
 			}
+			// labelValuesToTimeseriesMap groups data points by the label values
+			labelValuesToTimeseriesMap := make(map[string][]*metricspb.TimeSeries)
+			for _, timeseries := range metricPtr.Timeseries {
+				var composedValuesKey string
+				for _, vidx := range labelIdxs {
+					composedValuesKey += timeseries.LabelValues[vidx].Value
+				}
+				timeseriesGroup, ok := labelValuesToTimeseriesMap[composedValuesKey]
+				if ok {
+					labelValuesToTimeseriesMap[composedValuesKey] = append(timeseriesGroup, timeseries)
+				} else {
+					labelValuesToTimeseriesMap[composedValuesKey] = make([]*metricspb.TimeSeries, 0)
+				}
+			}
+
 		}
 	}
 }
