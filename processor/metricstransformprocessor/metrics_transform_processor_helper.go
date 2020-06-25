@@ -54,6 +54,22 @@ func (mtp *metricsTransformProcessor) update(metricPtr *metricspb.Metric, transf
 				}
 			}
 		}
+		// aggregate across labels
+		if op.Action == AggregateLabels {
+			// labelSet is a set of labels to keep
+			labelSet := make(map[string]bool)
+			for _, label := range op.LabelSet {
+				labelSet[label] = true
+			}
+			// labelIdxs is a slice containing the indices of the labels to keep. This is needed because label values are ordered in the same order as the labels
+			labelIdxs := make([]int, 0)
+			for idx, label := range metricPtr.MetricDescriptor.LabelKeys {
+				_, ok := labelSet[label]
+				if ok {
+					labelIdxs = append(labelIdxs, idx)
+				}
+			}
+		}
 	}
 }
 
