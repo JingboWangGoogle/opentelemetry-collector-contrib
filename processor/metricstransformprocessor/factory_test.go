@@ -21,19 +21,18 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
-
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config"
 	"go.opentelemetry.io/collector/config/configcheck"
 	"go.opentelemetry.io/collector/config/configmodels"
+	"go.uber.org/zap"
 )
 
 func TestType(t *testing.T) {
 	factory := Factory{}
 	pType := factory.Type()
 
-	assert.Equal(t, pType, configmodels.Type("metrics_transform"))
+	assert.Equal(t, pType, configmodels.Type("metricstransform"))
 }
 
 func TestCreateDefaultConfig(t *testing.T) {
@@ -68,6 +67,9 @@ func TestCreateProcessors(t *testing.T) {
 		}, {
 			configName: "config_invalid_label.yaml",
 			succeed:    false,
+		}, {
+			configName: "config_invalid_op_action.yaml",
+			succeed:    false,
 		},
 	}
 
@@ -98,8 +100,6 @@ func TestCreateProcessors(t *testing.T) {
 					component.ProcessorCreateParams{Logger: zap.NewNop()},
 					nil,
 					cfg)
-				fmt.Println(mp)
-				fmt.Println((*metricsTransformProcessor)(nil))
 				assert.Equal(t, test.succeed, mp != nil)
 				assert.Equal(t, test.succeed, mErr == nil)
 			})

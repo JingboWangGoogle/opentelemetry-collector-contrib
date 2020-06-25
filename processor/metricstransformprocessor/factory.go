@@ -26,7 +26,7 @@ import (
 
 const (
 	// The value of "type" key in configuration.
-	typeStr = "metrics_transform"
+	typeStr = "metricstransform"
 )
 
 // Factory is the factory for metrics transform processor.
@@ -65,36 +65,39 @@ func (f *Factory) CreateMetricsProcessor(
 	c configmodels.Processor,
 ) (component.MetricsProcessor, error) {
 	oCfg := c.(*Config)
-	err := validateConfiguration(*oCfg)
-	if err == nil {
-		return newMetricsTransformProcessor(nextConsumer, oCfg)
+	err := validateConfiguration(oCfg)
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+	return newMetricsTransformProcessor(nextConsumer, oCfg)
+
 }
 
-// buildConfiguration validates the input configuration has all of the required fields for the processor
+// validateConfiguration validates the input configuration has all of the required fields for the processor
 // and returns a list of valid actions to configure the processor.
 // An error is returned if there are any invalid inputs.
-func validateConfiguration(config Config) error {
-	if config.MetricName == "" {
-		return fmt.Errorf("error creating \"metrics_transform\" processor due to missing required field \"metric_name\"")
-	}
-
-	if config.Action != Update && config.Action != Insert {
-		return fmt.Errorf("error creating \"metrics_transform\" processor due to unsupported config \"action\": %v, the supported actions are \"insert\" and \"update\"", config.Action)
-	}
-
-	if config.Action == Insert && config.NewName == "" {
-		return fmt.Errorf("error creating \"metrics_transform\" processor due to missing required field \"new_name\" while \"action\" is insert")
-	}
-
-	for i, op := range config.Operations {
-		if op.Action != UpdateLabel && op.Action != AggregateLabels && op.Action != AggregateLabelValues {
-			return fmt.Errorf("error creating \"metrics_transform\" processor due to unsupported operation \"action\": %v, the supported actions are \"update_label\", \"aggregate_labels\", and \"aggregate_label_values\"", op.Action)
+func validateConfiguration(config *Config) error {
+	for _, transform := range config.Transforms {
+		if transform.MetricName == "" {
+			return fmt.Errorf("error creating %q processor due to missing required field %q", typeStr, MetricNameFieldName)
 		}
 
-		if op.Action == UpdateLabel && op.Label == "" {
-			return fmt.Errorf("error creating \"metrics_transform\" processor due to missing required field \"label\" while \"action\" is update_label in the %vth operation", i)
+		if transform.Action != Update && transform.Action != Insert {
+			return fmt.Errorf("error creating %q processor due to unsupported %q: %v, the supported actions are %q and %q", typeStr, ActionFieldName, transform.Action, Insert, Update)
+		}
+
+		if transform.Action == Insert && transform.NewName == "" {
+			return fmt.Errorf("error creating %q processor due to missing required field %q while %q is %v", typeStr, NewNameFieldName, ActionFieldName, Insert)
+		}
+
+		for i, op := range transform.Operations {
+			if op.Action != UpdateLabel && op.Action != AggregateLabels && op.Action != AggregateLabelValues {
+				return fmt.Errorf("error creating %q processor due to unsupported operation %q: %v, the supported actions are %q, %q, and %q", typeStr, ActionFieldName, op.Action, UpdateLabel, AggregateLabels, AggregateLabelValues)
+			}
+
+			if op.Action == UpdateLabel && op.Label == "" {
+				return fmt.Errorf("error creating %q processor due to missing required field %q while %q is %v in the %vth operation", typeStr, LabelFieldName, ActionFieldName, UpdateLabel, i)
+			}
 		}
 	}
 

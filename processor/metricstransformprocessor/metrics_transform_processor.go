@@ -18,19 +18,23 @@ import (
 	"context"
 	"log"
 
+	metricspb "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/consumer/pdatautil"
 )
 
+const (
+	validNewNameFuncName       = "validNewName()"
+	validNewLabelFuncName      = "validNewLabel()"
+	validNewLabelValueFuncName = "validNewLabelValue()"
+)
+
 type metricsTransformProcessor struct {
 	cfg        *Config
 	next       consumer.MetricsConsumer
-	metricname string
-	action     ConfigAction
-	newname    string
-	operations []Operation
+	transforms []Transform
 }
 
 var _ component.MetricsProcessor = (*metricsTransformProcessor)(nil)
@@ -39,16 +43,13 @@ func newMetricsTransformProcessor(next consumer.MetricsConsumer, cfg *Config) (*
 	return &metricsTransformProcessor{
 		cfg:        cfg,
 		next:       next,
-		metricname: cfg.MetricName,
-		action:     cfg.Action,
-		newname:    cfg.NewName,
-		operations: cfg.Operations,
+		transforms: cfg.Transforms,
 	}, nil
 }
 
-// GetCapabilities returns the Capabilities assocciated with the resource processor.
+// GetCapabilities returns the Capabilities associated with the metrics transform processor.
 func (mtp *metricsTransformProcessor) GetCapabilities() component.ProcessorCapabilities {
-	return component.ProcessorCapabilities{MutatesConsumedData: false}
+	return component.ProcessorCapabilities{MutatesConsumedData: true}
 }
 
 // Start is invoked during service startup.
@@ -61,30 +62,48 @@ func (*metricsTransformProcessor) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// ConsumeMetrics implements the MetricsProcessor interface
+// ConsumeMetrics implements the MetricsProcessor interface.
 func (mtp *metricsTransformProcessor) ConsumeMetrics(ctx context.Context, md pdata.Metrics) error {
 	return mtp.next.ConsumeMetrics(ctx, mtp.transform(md))
 }
 
-// transform transforms the metrics based on the information specified in the config
+// transform transforms the metrics based on the information specified in the config.
 func (mtp *metricsTransformProcessor) transform(md pdata.Metrics) pdata.Metrics {
 	mds := pdatautil.MetricsToMetricsData(md)
 
 	for i, data := range mds {
-		// if the new name is not valid, discard this operation for this list of metrics
-		if mtp.validNewName(data.Metrics) {
-			for _, metric := range data.Metrics {
-				if metric.MetricDescriptor.Name == mtp.metricname {
-					// mtp.action is already validated to only contain either update or insert
-					if mtp.action == Update {
-						mtp.update(metric)
-					} else if mtp.action == Insert {
-						mds[i].Metrics = mtp.insert(metric, data.Metrics)
-					}
-				}
+		nameToMetricMapping := make(map[string]*metricspb.Metric)
+		// O(len(data.Metrics))
+		for _, metric := range data.Metrics {
+			nameToMetricMapping[metric.MetricDescriptor.Name] = metric
+		}
+
+		for _, transform := range mtp.transforms {
+			if !mtp.validNewName(transform, nameToMetricMapping) {
+				log.Printf("error running %q processor due to collision %q: %v with existing metric names detected by the function %q", typeStr, NewNameFieldName, transform.NewName, validNewNameFuncName)
+				continue
 			}
-		} else {
-			log.Printf("error running \"metrics_transform\" processor due to invalid \"new_name\": %v, which might be caused by a collision with existing metric names", mtp.newname)
+
+			metric, ok := nameToMetricMapping[transform.MetricName]
+			if !ok {
+				continue
+			}
+
+			// mtp.action is already validated to only contain either update or insert
+			if transform.Action == Update {
+				mtp.update(metric, transform)
+				if transform.NewName == "" {
+					continue
+				}
+				// if name is updated, the map has to be updated
+				nameToMetricMapping[transform.NewName] = nameToMetricMapping[transform.MetricName]
+				delete(nameToMetricMapping, transform.MetricName)
+			} else if transform.Action == Insert {
+				var newMetric *metricspb.Metric
+				mds[i].Metrics, newMetric = mtp.insert(metric, mds[i].Metrics, transform)
+				// mapping has to be updated with the name metric
+				nameToMetricMapping[newMetric.MetricDescriptor.Name] = newMetric
+			}
 		}
 	}
 

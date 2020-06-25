@@ -18,7 +18,6 @@ import (
 	"context"
 	"testing"
 
-	metricspb "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/config/configmodels"
@@ -30,38 +29,33 @@ import (
 func TestMetricsTransformProcessor(t *testing.T) {
 	for _, test := range standardTests {
 		t.Run(test.name, func(t *testing.T) {
-			// next stores the results of the aggregation metric processor
+			// next stores the results of the aggregation metric processor.
 			next := &etest.SinkMetricsExporter{}
 			cfg := &Config{
 				ProcessorSettings: configmodels.ProcessorSettings{
 					TypeVal: typeStr,
 					NameVal: typeStr,
 				},
-				MetricName: test.metricName,
-				Action:     test.action,
-				NewName:    test.newName,
-				Operations: test.operations,
+				Transforms: test.transforms,
 			}
-			amp, err := newMetricsTransformProcessor(next, cfg)
-			assert.NotNil(t, amp)
+
+			mtp, err := newMetricsTransformProcessor(next, cfg)
+			assert.NotNil(t, mtp)
 			assert.Nil(t, err)
 
-			caps := amp.GetCapabilities()
-			assert.Equal(t, false, caps.MutatesConsumedData)
+			caps := mtp.GetCapabilities()
+			assert.Equal(t, true, caps.MutatesConsumedData)
 			ctx := context.Background()
-			assert.NoError(t, amp.Start(ctx, nil))
+			assert.NoError(t, mtp.Start(ctx, nil))
 
 			// contruct metrics data to feed into the processor
 			md := constructTestInputMetricsData(test)
+
 			// process
-			cErr := amp.ConsumeMetrics(
+			cErr := mtp.ConsumeMetrics(
 				context.Background(),
 				pdatautil.MetricsFromMetricsData([]consumerdata.MetricsData{
-					{},
 					md,
-					{
-						Metrics: []*metricspb.Metric{},
-					},
 				}),
 			)
 			assert.Nil(t, cErr)
@@ -70,46 +64,46 @@ func TestMetricsTransformProcessor(t *testing.T) {
 			got := next.AllMetrics()
 			require.Equal(t, 1, len(got))
 			gotMD := pdatautil.MetricsToMetricsData(got[0])
-			require.Equal(t, 3, len(gotMD))
-			assert.EqualValues(t, consumerdata.MetricsData{}, gotMD[0])
-			require.Equal(t, len(test.outMN), len(gotMD[1].Metrics))
+			require.Equal(t, 1, len(gotMD))
+			require.Equal(t, len(test.outMN), len(gotMD[0].Metrics))
 
-			targetName := test.metricName
-			if test.newName != "" {
-				targetName = test.newName
-			}
-			for idx, out := range gotMD[1].Metrics {
-				// check name
-				assert.Equal(t, test.outMN[idx], out.MetricDescriptor.Name)
-				// check labels
-				// check the updated or inserted is correctly updated
-				if out.MetricDescriptor.Name == targetName {
-					for lidx, l := range out.MetricDescriptor.LabelKeys {
-						assert.Equal(t, test.outLabels[lidx], l.Key)
-					}
-					for tidx, ts := range out.Timeseries {
-						for lidx, v := range ts.LabelValues {
-							assert.Equal(t, test.outLabelValues[tidx][lidx], v.Value)
-						}
-					}
+			for _, transform := range test.transforms {
+				targetName := transform.MetricName
+				if transform.NewName != "" {
+					targetName = transform.NewName
 				}
-				// check the original is untouched if insert
-				if test.action == Insert {
-					if out.MetricDescriptor.Name == test.metricName {
+				for idx, out := range gotMD[0].Metrics {
+					// check name
+					assert.Equal(t, test.outMN[idx], out.MetricDescriptor.Name)
+					// check labels
+					// check the updated or inserted is correctly updated
+					if out.MetricDescriptor.Name == targetName {
 						for lidx, l := range out.MetricDescriptor.LabelKeys {
-							assert.Equal(t, test.inLabels[lidx], l.Key)
+							assert.Equal(t, test.outLabels[lidx], l.Key)
 						}
 						for tidx, ts := range out.Timeseries {
 							for lidx, v := range ts.LabelValues {
-								assert.Equal(t, test.inLabelValues[tidx][lidx], v.Value)
+								assert.Equal(t, test.outLabelValues[tidx][lidx], v.Value)
+							}
+						}
+					}
+					// check the original is untouched if insert
+					if transform.Action == Insert {
+						if out.MetricDescriptor.Name == transform.MetricName {
+							for lidx, l := range out.MetricDescriptor.LabelKeys {
+								assert.Equal(t, test.inLabels[lidx], l.Key)
+							}
+							for tidx, ts := range out.Timeseries {
+								for lidx, v := range ts.LabelValues {
+									assert.Equal(t, test.inLabelValues[tidx][lidx], v.Value)
+								}
 							}
 						}
 					}
 				}
 			}
 
-			assert.EqualValues(t, consumerdata.MetricsData{Metrics: []*metricspb.Metric{}}, gotMD[2])
-			assert.NoError(t, amp.Shutdown(ctx))
+			assert.NoError(t, mtp.Shutdown(ctx))
 		})
 	}
 }
@@ -117,29 +111,31 @@ func TestMetricsTransformProcessor(t *testing.T) {
 func BenchmarkMetricsTransformProcessorRenameMetrics(b *testing.B) {
 	// runs 1000 metrics through a filterprocessor with both include and exclude filters.
 	stressTest := metricsTransformTest{
-		name:       "1000Metrics",
-		metricName: "metric1",
-		action:     "insert",
-		newName:    "newname",
+		name: "1000Metrics",
+		transforms: []Transform{
+			{
+				MetricName: "metric1",
+				Action:     "insert",
+				NewName:    "newname",
+			},
+		},
 	}
 
 	for len(stressTest.inMN) < 1000 {
-		stressTest.inMN = append(stressTest.inMN, inMetricNames...)
+		stressTest.inMN = append(stressTest.inMN, initialMetricNames...)
 	}
 
-	benchmarkTests := append(standardTests, stressTest)
+	benchmarkTests := []metricsTransformTest{stressTest}
 
 	for _, test := range benchmarkTests {
-		// next stores the results of the filter metric processor
+		// next stores the results of the filter metric processor.
 		next := &etest.SinkMetricsExporter{}
 		cfg := &Config{
 			ProcessorSettings: configmodels.ProcessorSettings{
 				TypeVal: typeStr,
 				NameVal: typeStr,
 			},
-			MetricName: test.metricName,
-			Action:     test.action,
-			NewName:    test.newName,
+			Transforms: test.transforms,
 		}
 
 		amp, err := newMetricsTransformProcessor(next, cfg)
@@ -148,17 +144,15 @@ func BenchmarkMetricsTransformProcessorRenameMetrics(b *testing.B) {
 
 		md := constructTestInputMetricsData(test)
 
-		b.Run(test.metricName, func(b *testing.B) {
-			assert.NoError(b, amp.ConsumeMetrics(
-				context.Background(),
-				pdatautil.MetricsFromMetricsData([]consumerdata.MetricsData{
-					{},
-					md,
-					{
-						Metrics: []*metricspb.Metric{},
-					},
-				}),
-			))
+		b.Run(test.name, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				assert.NoError(b, amp.ConsumeMetrics(
+					context.Background(),
+					pdatautil.MetricsFromMetricsData([]consumerdata.MetricsData{
+						md,
+					}),
+				))
+			}
 		})
 	}
 }

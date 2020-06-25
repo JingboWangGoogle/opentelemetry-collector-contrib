@@ -21,24 +21,25 @@ import (
 )
 
 // update updates the original metric content in the metricPtr pointer
-func (mtp *metricsTransformProcessor) update(metricPtr *metricspb.Metric) {
+func (mtp *metricsTransformProcessor) update(metricPtr *metricspb.Metric, transform Transform) {
 	// metric name update
-	if mtp.newname != "" {
-		metricPtr.MetricDescriptor.Name = mtp.newname
+	if transform.NewName != "" {
+		metricPtr.MetricDescriptor.Name = transform.NewName
 	}
 
-	for _, op := range mtp.operations {
+	for _, op := range transform.Operations {
 		// update label
 		if op.Action == UpdateLabel {
+			// if new_label is invalid, skip this operation
+			if !mtp.validNewLabel(metricPtr.MetricDescriptor.LabelKeys, op.NewLabel) {
+				log.Printf("error running %q processor due to collided %q: %v with existing label on metric named: %v detected by function %q", typeStr, NewLabelFieldName, op.NewLabel, metricPtr.MetricDescriptor.Name, validNewLabelFuncName)
+				continue
+			}
 			for idx, label := range metricPtr.MetricDescriptor.LabelKeys {
 				if label.Key == op.Label {
 					// label key update
 					if op.NewLabel != "" {
-						if mtp.validNewLabel(metricPtr.MetricDescriptor.LabelKeys, op.NewLabel) {
-							label.Key = op.NewLabel
-						} else {
-							log.Printf("error running \"metrics_transform\" processor due to invalid \"new_label\": %v, which might be caused by a collision with existing label on metric named: %v", op.NewLabel, metricPtr.MetricDescriptor.Name)
-						}
+						label.Key = op.NewLabel
 					}
 					// label value update
 					labelValuesMapping := mtp.createLabelValueMapping(op.ValueActions, metricPtr.Timeseries, idx)
@@ -56,11 +57,12 @@ func (mtp *metricsTransformProcessor) update(metricPtr *metricspb.Metric) {
 	}
 }
 
-// insert inserts a new copy of the metricPtr content into the metricPtrs slice
-func (mtp *metricsTransformProcessor) insert(metricPtr *metricspb.Metric, metricPtrs []*metricspb.Metric) []*metricspb.Metric {
+// insert inserts a new copy of the metricPtr content into the metricPtrs slice.
+// returns the new metrics list and the new metric
+func (mtp *metricsTransformProcessor) insert(metricPtr *metricspb.Metric, metricPtrs []*metricspb.Metric, transform Transform) ([]*metricspb.Metric, *metricspb.Metric) {
 	metricCopy := mtp.createCopy(metricPtr)
-	mtp.update(metricCopy)
-	return append(metricPtrs, metricCopy)
+	mtp.update(metricCopy, transform)
+	return append(metricPtrs, metricCopy), metricCopy
 }
 
 // createCopy creates a new copy of the input metric
@@ -117,23 +119,19 @@ func (mtp *metricsTransformProcessor) createLabelValueMapping(valueActions []Val
 		if mtp.validNewLabelValue(timeseries, idx, valueAction.NewValue) {
 			mapping[valueAction.Value] = valueAction.NewValue
 		} else {
-			log.Printf("error running \"metrics_transform\" processor due to invalid \"new_value\": %v, which might be caused by a collision with existing label values", valueAction.NewValue)
+			log.Printf("error running %q processor due to collided %q: %v with existing label values detected by function %q", typeStr, NewLabelValueFieldName, valueAction.NewValue, validNewLabelValueFuncName)
 		}
 	}
 	return mapping
 }
 
-// validNewName determines if the new name is a valid one. An invalid one is one that already exists
-func (mtp *metricsTransformProcessor) validNewName(metricPtrs []*metricspb.Metric) bool {
-	for _, metric := range metricPtrs {
-		if metric.MetricDescriptor.Name == mtp.newname {
-			return false
-		}
-	}
-	return true
+// validNewName determines if the new name is a valid one. An invalid one is one that already exists.
+func (mtp *metricsTransformProcessor) validNewName(transform Transform, nameToMetricMapping map[string]*metricspb.Metric) bool {
+	_, ok := nameToMetricMapping[transform.NewName]
+	return !ok
 }
 
-// validNewLabel determines if the new label is a valid one. An invalid one is one that already exists
+// validNewLabel determines if the new label is a valid one. An invalid one is one that already exists.
 func (mtp *metricsTransformProcessor) validNewLabel(labelKeys []*metricspb.LabelKey, newLabel string) bool {
 	for _, label := range labelKeys {
 		if label.Key == newLabel {

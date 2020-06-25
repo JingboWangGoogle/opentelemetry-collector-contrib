@@ -4,9 +4,10 @@ receivers:
 processors:
     metricstransform:
         transforms:
-            - metric_name: # missing metric name
+            - metric_name: old_name
               action: update
-
+              operations:
+                - action: invalid # invalid
 exporters:
     exampleexporter:
 
