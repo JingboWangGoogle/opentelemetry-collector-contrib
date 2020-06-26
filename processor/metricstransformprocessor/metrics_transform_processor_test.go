@@ -69,16 +69,35 @@ func TestMetricsTransformProcessor(t *testing.T) {
 			require.Equal(t, len(test.out), len(actualOut))
 
 			for idx, out := range test.out {
+				actualDescriptor := actualOut[idx].MetricDescriptor
 				// name
-				assert.Equal(t, out.name, actualOut[idx].MetricDescriptor.Name)
+				assert.Equal(t, out.name, actualDescriptor.Name)
 				// label keys
+				assert.Equal(t, len(out.labelKeys), len(actualDescriptor.LabelKeys))
 				for lidx, l := range out.labelKeys {
-					assert.Equal(t, l, actualOut[idx].MetricDescriptor.LabelKeys[lidx].Key)
+					assert.Equal(t, l, actualDescriptor.LabelKeys[lidx].Key)
 				}
-				// label values
+				// timeseries
+				assert.Equal(t, len(out.timeseries), len(actualOut[idx].Timeseries))
 				for tidx, ts := range out.timeseries {
+					actualTimeseries := actualOut[idx].Timeseries[tidx]
+					// start timestamp
+					assert.Equal(t, ts.startTimestamp, actualTimeseries.StartTimestamp.Seconds)
+					// label values
+					assert.Equal(t, len(ts.labelValues), len(actualTimeseries.LabelValues))
 					for vidx, v := range ts.labelValues {
-						assert.Equal(t, v, actualOut[idx].Timeseries[tidx].LabelValues[vidx].Value)
+						assert.Equal(t, v, actualTimeseries.LabelValues[vidx].Value)
+					}
+					// points
+					assert.Equal(t, len(ts.points), len(actualTimeseries.Points))
+					for pidx, p := range ts.points {
+						actualPoint := actualTimeseries.Points[pidx]
+						assert.Equal(t, p.timestamp, actualPoint.Timestamp.Seconds)
+						if p.isInt64 {
+							assert.Equal(t, int64(p.value), actualPoint.GetInt64Value())
+						} else if p.isDouble {
+							assert.Equal(t, float64(p.value), actualPoint.GetDoubleValue())
+						}
 					}
 				}
 			}

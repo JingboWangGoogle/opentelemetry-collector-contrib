@@ -16,6 +16,7 @@ package metricstransformprocessor
 
 import (
 	metricspb "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1"
+	"github.com/golang/protobuf/ptypes/timestamp"
 	"go.opentelemetry.io/collector/consumer/consumerdata"
 )
 
@@ -27,6 +28,7 @@ const (
 	labelValue11    = "label1-value1"
 	labelValue21    = "label2-value1"
 	labelValue12    = "label1-value2"
+	labelValue22    = "label2-value2"
 	newMetric1      = "metric1/new"
 	newMetric2      = "metric2/new"
 	newLabel1       = "label1/new"
@@ -34,13 +36,17 @@ const (
 	nonexist        = "nonexist"
 )
 
+type testPoint struct {
+	timestamp int64
+	value     int
+	isInt64   bool
+	isDouble  bool
+}
+
 type testTimeseries struct {
-	startTimestamp int
+	startTimestamp int64
 	labelValues    []string
-	points         struct {
-		timestamp int
-		value     int
-	}
+	points         []testPoint
 }
 
 type testMetric struct {
@@ -173,6 +179,24 @@ var (
 		},
 	}
 
+	validUpdateLabelAggrSumOperation = Operation{
+		Action:          AggregateLabels,
+		LabelSet:        []string{label1},
+		AggregationType: Sum,
+	}
+
+	validUpdateLabelAggrAverageOperation = Operation{
+		Action:          AggregateLabels,
+		LabelSet:        []string{label1},
+		AggregationType: Average,
+	}
+
+	validUpdateLabelAggrMaxOperation = Operation{
+		Action:          AggregateLabels,
+		LabelSet:        []string{label1},
+		AggregationType: Max,
+	}
+
 	// test cases
 	standardTests = []metricsTransformTest{
 		// UPDATE
@@ -277,6 +301,78 @@ var (
 			in:  []testMetric{initialLabelValueRename1},
 			out: []testMetric{initialLabelValueRename1},
 		},
+		{
+			name: "metric_label_aggregation_sum_int_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelAggrSumOperation},
+				},
+			},
+			in:  []testMetric{inLabelAggrBuilder(1, 3, true, false)},
+			out: []testMetric{outLabelAggrBuilder(4, true, false)},
+		},
+		{
+			name: "metric_label_aggregation_average_int_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelAggrAverageOperation},
+				},
+			},
+			in:  []testMetric{inLabelAggrBuilder(1, 3, true, false)},
+			out: []testMetric{outLabelAggrBuilder(2, true, false)},
+		},
+		{
+			name: "metric_label_aggregation_max_int_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelAggrMaxOperation},
+				},
+			},
+			in:  []testMetric{inLabelAggrBuilder(3, 1, true, false)},
+			out: []testMetric{outLabelAggrBuilder(3, true, false)},
+		},
+		{
+			name: "metric_label_aggregation_sum_double_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelAggrSumOperation},
+				},
+			},
+			in:  []testMetric{inLabelAggrBuilder(1, 3, false, true)},
+			out: []testMetric{outLabelAggrBuilder(4, false, true)},
+		},
+		{
+			name: "metric_label_aggregation_average_double_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelAggrAverageOperation},
+				},
+			},
+			in:  []testMetric{inLabelAggrBuilder(1, 3, false, true)},
+			out: []testMetric{outLabelAggrBuilder(2, false, true)},
+		},
+		{
+			name: "metric_label_aggregation_max_double_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelAggrMaxOperation},
+				},
+			},
+			in:  []testMetric{inLabelAggrBuilder(3, 1, false, true)},
+			out: []testMetric{outLabelAggrBuilder(3, false, true)},
+		},
 		// INSERT
 		{
 			name: "metric_name_insert",
@@ -333,6 +429,18 @@ var (
 			in:  []testMetric{initialLabelValueRename1},
 			out: []testMetric{initialLabelValueRename1, outLabelValueRenameInsert1},
 		},
+		{
+			name: "metric_label_aggregation_sum_int_insert",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Insert,
+					Operations: []Operation{validUpdateLabelAggrSumOperation},
+				},
+			},
+			in:  []testMetric{inLabelAggrBuilder(1, 3, true, false)},
+			out: []testMetric{inLabelAggrBuilder(1, 3, true, false), outLabelAggrBuilder(4, true, false)},
+		},
 	}
 )
 
@@ -349,7 +457,7 @@ func constructTestInputMetricsData(test metricsTransformTest) consumerdata.Metri
 				Key: l,
 			}
 		}
-		// construct timeseries with label values
+		// construct timeseries with label values and points
 		timeseries := make([]*metricspb.TimeSeries, len(in.timeseries))
 		for tidx, ts := range in.timeseries {
 			labelValues := make([]*metricspb.LabelValue, len(ts.labelValues))
@@ -358,8 +466,37 @@ func constructTestInputMetricsData(test metricsTransformTest) consumerdata.Metri
 					Value: value,
 				}
 			}
+			points := make([]*metricspb.Point, len(ts.points))
+			for pidx, p := range ts.points {
+				points[pidx] = &metricspb.Point{
+					Timestamp: &timestamp.Timestamp{
+						Seconds: p.timestamp,
+						Nanos:   0,
+					},
+				}
+				if p.isInt64 {
+					points[pidx].Value = &metricspb.Point_Int64Value{
+						Int64Value: int64(p.value),
+					}
+				} else if p.isDouble {
+					points[pidx].Value = &metricspb.Point_DoubleValue{
+						DoubleValue: float64(p.value),
+					}
+				} else {
+					points[pidx].Value = &metricspb.Point_DistributionValue{
+						DistributionValue: &metricspb.DistributionValue{
+							Count: int64(p.value),
+						},
+					}
+				}
+			}
 			timeseries[tidx] = &metricspb.TimeSeries{
+				StartTimestamp: &timestamp.Timestamp{
+					Seconds: ts.startTimestamp,
+					Nanos:   0,
+				},
 				LabelValues: labelValues,
+				Points:      points,
 			}
 		}
 
@@ -373,4 +510,60 @@ func constructTestInputMetricsData(test metricsTransformTest) consumerdata.Metri
 		}
 	}
 	return md
+}
+
+func outLabelAggrBuilder(value int, isInt bool, isDouble bool) testMetric {
+	outMetric := testMetric{
+		name:      metric1,
+		labelKeys: []string{label1},
+		timeseries: []testTimeseries{
+			{
+				startTimestamp: 1,
+				labelValues:    []string{labelValue11},
+				points: []testPoint{
+					{
+						timestamp: 2,
+						value:     value,
+						isInt64:   isInt,
+						isDouble:  isDouble,
+					},
+				},
+			},
+		},
+	}
+	return outMetric
+}
+
+func inLabelAggrBuilder(value1 int, value2 int, isInt bool, isDouble bool) testMetric {
+	outMetric := testMetric{
+		name:      metric1,
+		labelKeys: []string{label1, label2},
+		timeseries: []testTimeseries{
+			{
+				startTimestamp: 2,
+				labelValues:    []string{labelValue11, labelValue21},
+				points: []testPoint{
+					{
+						timestamp: 2,
+						value:     value1,
+						isInt64:   isInt,
+						isDouble:  isDouble,
+					},
+				},
+			},
+			{
+				startTimestamp: 1,
+				labelValues:    []string{labelValue11, labelValue22},
+				points: []testPoint{
+					{
+						timestamp: 2,
+						value:     value2,
+						isInt64:   isInt,
+						isDouble:  isDouble,
+					},
+				},
+			},
+		},
+	}
+	return outMetric
 }

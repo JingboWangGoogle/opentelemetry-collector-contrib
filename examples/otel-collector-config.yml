@@ -28,12 +28,12 @@ processors:
               operations:
                 - action: update_label
                   label: client
-                  new_label: new/client
                   value_actions:
                     - value: cli
                       new_value: new/cli
-                    - value: repl
-                      new_value: new/repl
+                - action: aggregate_labels
+                  label_set: [client]
+                  aggregation_type: sum
             - metric_name: opdemo/line_lengths
               action: insert
               new_name: new/line_lengths

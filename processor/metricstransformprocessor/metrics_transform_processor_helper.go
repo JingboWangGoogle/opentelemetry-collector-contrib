@@ -55,64 +55,22 @@ func (mtp *metricsTransformProcessor) update(metricPtr *metricspb.Metric, transf
 			}
 		}
 		// aggregate across labels
-		// if op.Action == AggregateLabels {
-		// 	// labelSet is a set of labels to keep
-		// 	labelSet := make(map[string]bool)
-		// 	for _, label := range op.LabelSet {
-		// 		labelSet[label] = true
-		// 	}
-		// 	// labelIdxs is a slice containing the indices of the labels to keep. This is needed because label values are ordered in the same order as the labels
-		// 	labelIdxs := make([]int, 0)
-		// 	for idx, label := range metricPtr.MetricDescriptor.LabelKeys {
-		// 		_, ok := labelSet[label.Key]
-		// 		if ok {
-		// 			labelIdxs = append(labelIdxs, idx)
-		// 		}
-		// 	}
-		// 	// key is a copmosite of the label values as a single string
-		// 	// keyToTimeseriesMap groups data points by the label values
-		// 	keyToTimeseriesMap := make(map[string][]*metricspb.TimeSeries)
-		// 	// keyToLabelValuesMap groups maps to the actual label values objects
-		// 	keyToLabelValuesMap := make(map[string][]*metricspb.LabelValue)
-		// 	for _, timeseries := range metricPtr.Timeseries {
-		// 		var composedValues string
-		// 		newLabelValues := make([]*metricspb.LabelValue, 0)
-		// 		for _, vidx := range labelIdxs {
-		// 			composedValues += timeseries.LabelValues[vidx].Value
-		// 			newLabelValues = append(newLabelValues, timeseries.LabelValues[vidx])
-		// 		}
-		// 		timeseriesGroup, ok := keyToTimeseriesMap[composedValues]
-		// 		if ok {
-		// 			keyToTimeseriesMap[composedValues] = append(timeseriesGroup, timeseries)
-		// 		} else {
-		// 			keyToTimeseriesMap[composedValues] = []*metricspb.TimeSeries{timeseries}
-		// 			keyToLabelValuesMap[composedValues] = newLabelValues
-		// 		}
-		// 	}
-		// 	// iterate over the map to compose each group into one timeseries
-		// 	newTimeSeries := make([]*metricspb.TimeSeries, 0)
-		// 	for key, element := range keyToTimeseriesMap {
-		// 		if (len(element) > 0) {
-		// 			timestampToPointIdx := make(map[timestamp.Timestamp]int)
-		// 			newPoints := make([]*metricspb.Point, 0)
-		// 			newSingleTimeSeries := &metricspb.TimeSeries{
-		// 				LabelValues: keyToLabelValuesMap[key],
-		// 			}
-		// 			for _, ts := range element {
-		// 				for _, p := range ts.Points {
-		// 					if idx, ok := timestampToPointIdx[*p.Timestamp]; ok {
-		// 						newPoints[idx].Value += p.Value
-		// 					} else {
-		// 						timestampToPointIdx[*p.Timestamp] = len(newPoints)
-		// 						newPoints = append(newPoints, p)
-		// 					}
-		// 				}
-		// 			}
-		// 		} else {
+		if op.Action == AggregateLabels {
+			// labelSet is a set of labels to keep
+			labelSet := mtp.sliceToSet(op.LabelSet)
+			// labelIdxs is a slice containing the indices of the labels to keep. This is needed because label values are ordered in the same order as the labels
+			labelIdxs, labels := mtp.getLabelIdxs(metricPtr, labelSet)
+			// key is a composite of the label values as a single string
+			// keyToTimeseriesMap groups timeseries by the label values
+			// keyToLabelValuesMap groups the actual label values objects
+			keyToTimeseriesMap, keyToLabelValuesMap := mtp.constructAggrGroupsMaps(metricPtr, labelIdxs)
 
-		// 		}
-		// 	}
-		// }
+			// compose groups into timeseries
+			newTimeseries := mtp.composeTimeseriesGroups(keyToTimeseriesMap, keyToLabelValuesMap, op.AggregationType)
+
+			metricPtr.Timeseries = newTimeseries
+			metricPtr.MetricDescriptor.LabelKeys = labels
+		}
 	}
 }
 
@@ -208,4 +166,138 @@ func (mtp *metricsTransformProcessor) validNewLabelValue(timeseries []*metricspb
 		}
 	}
 	return true
+}
+
+func (mtp *metricsTransformProcessor) sliceToSet(slice []string) map[string]bool {
+	set := make(map[string]bool)
+	for _, label := range slice {
+		set[label] = true
+	}
+	return set
+}
+
+func (mtp *metricsTransformProcessor) getLabelIdxs(metricPtr *metricspb.Metric, labelSet map[string]bool) ([]int, []*metricspb.LabelKey) {
+	labelIdxs := make([]int, 0)
+	labels := make([]*metricspb.LabelKey, 0)
+	for idx, label := range metricPtr.MetricDescriptor.LabelKeys {
+		_, ok := labelSet[label.Key]
+		if ok {
+			labelIdxs = append(labelIdxs, idx)
+			labels = append(labels, label)
+		}
+	}
+	return labelIdxs, labels
+}
+
+func (mtp *metricsTransformProcessor) constructAggrGroupsMaps(metricPtr *metricspb.Metric, labelIdxs []int) (map[string][]*metricspb.TimeSeries, map[string][]*metricspb.LabelValue) {
+	// key is a composite of the label values as a single string
+	// keyToTimeseriesMap groups timeseries by the label values
+	keyToTimeseriesMap := make(map[string][]*metricspb.TimeSeries)
+	// keyToLabelValuesMap groups the actual label values objects
+	keyToLabelValuesMap := make(map[string][]*metricspb.LabelValue)
+	for _, timeseries := range metricPtr.Timeseries {
+		// composedValues is the key, the composite of the label values as a single string
+		var composedValues string
+		// newLabelValues are the label values after aggregation, dropping the excluded ones
+		newLabelValues := make([]*metricspb.LabelValue, len(labelIdxs))
+		for i, vidx := range labelIdxs {
+			composedValues += timeseries.LabelValues[vidx].Value
+			newLabelValues[i] = timeseries.LabelValues[vidx]
+		}
+		timeseriesGroup, ok := keyToTimeseriesMap[composedValues]
+		if ok {
+			keyToTimeseriesMap[composedValues] = append(timeseriesGroup, timeseries)
+		} else {
+			keyToTimeseriesMap[composedValues] = []*metricspb.TimeSeries{timeseries}
+			keyToLabelValuesMap[composedValues] = newLabelValues
+		}
+	}
+	return keyToTimeseriesMap, keyToLabelValuesMap
+}
+
+func (mtp *metricsTransformProcessor) composeTimeseriesGroups(keyToTimeseriesMap map[string][]*metricspb.TimeSeries, keyToLabelValuesMap map[string][]*metricspb.LabelValue, aggrType AggregationType) []*metricspb.TimeSeries {
+	newTimeSeries := make([]*metricspb.TimeSeries, len(keyToTimeseriesMap))
+	idxCounter := 0
+	for key, element := range keyToTimeseriesMap {
+		startTimestamp := element[0].StartTimestamp
+		// timestampToPoints maps from timestamp string to points
+		timestampToPoints := make(map[string][]*metricspb.Point)
+		for _, ts := range element {
+			if ts.StartTimestamp.Seconds < startTimestamp.Seconds || (ts.StartTimestamp.Seconds == startTimestamp.Seconds && ts.StartTimestamp.Nanos < startTimestamp.Nanos) {
+				startTimestamp = ts.StartTimestamp
+			}
+			for _, p := range ts.Points {
+				if points, ok := timestampToPoints[p.Timestamp.String()]; ok {
+					timestampToPoints[p.Timestamp.String()] = append(points, p)
+				} else {
+					timestampToPoints[p.Timestamp.String()] = []*metricspb.Point{p}
+				}
+			}
+		}
+		newPoints := make([]*metricspb.Point, len(timestampToPoints))
+		pidxCounter := 0
+		for _, points := range timestampToPoints {
+			newPoints[pidxCounter] = &metricspb.Point{
+				Timestamp: points[0].Timestamp,
+			}
+			intPoint, doublePoint := mtp.compute(points, aggrType)
+			if intPoint != nil {
+				newPoints[pidxCounter].Value = intPoint
+			} else if doublePoint != nil {
+				newPoints[pidxCounter].Value = doublePoint
+			} else {
+				newPoints[pidxCounter].Value = points[0].Value
+			}
+			pidxCounter++
+		}
+		// newSingleTimeSeries is an aggregated timeseries
+		newSingleTimeSeries := &metricspb.TimeSeries{
+			StartTimestamp: startTimestamp,
+			LabelValues:    keyToLabelValuesMap[key],
+			Points:         newPoints,
+		}
+		newTimeSeries[idxCounter] = newSingleTimeSeries
+		idxCounter++
+	}
+
+	return newTimeSeries
+}
+
+func (mtp *metricsTransformProcessor) compute(points []*metricspb.Point, aggrType AggregationType) (*metricspb.Point_Int64Value, *metricspb.Point_DoubleValue) {
+	intVal := int64(0)
+	doubleVal := float64(0)
+	if points[0].GetInt64Value() != 0 {
+		for _, p := range points {
+			if aggrType == Sum || aggrType == Average {
+				intVal += p.GetInt64Value()
+			} else if aggrType == Max {
+				if p.GetInt64Value() <= intVal {
+					continue
+				}
+				intVal = p.GetInt64Value()
+			}
+
+		}
+		if aggrType == Average {
+			intVal /= int64(len(points))
+		}
+		return &metricspb.Point_Int64Value{Int64Value: intVal}, nil
+	} else if points[0].GetDoubleValue() != 0 {
+		for _, p := range points {
+			if aggrType == Sum || aggrType == Average {
+				doubleVal += p.GetDoubleValue()
+			} else if aggrType == Max {
+				if p.GetDoubleValue() <= doubleVal {
+					continue
+				}
+				doubleVal = p.GetDoubleValue()
+			}
+
+		}
+		if aggrType == Average {
+			doubleVal /= float64(len(points))
+		}
+		return nil, &metricspb.Point_DoubleValue{DoubleValue: doubleVal}
+	}
+	return nil, nil
 }
