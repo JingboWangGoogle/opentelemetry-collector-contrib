@@ -16,213 +16,157 @@ package metricstransformprocessor
 
 import (
 	metricspb "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1"
-	"github.com/golang/protobuf/ptypes/timestamp"
 	"go.opentelemetry.io/collector/consumer/consumerdata"
 )
+
+const (
+	metric1         = "metric1"
+	metric2         = "metric2"
+	label1          = "label1"
+	label2          = "label2"
+	labelValue11    = "label1-value1"
+	labelValue21    = "label2-value1"
+	labelValue12    = "label1-value2"
+	newMetric1      = "metric1/new"
+	newMetric2      = "metric2/new"
+	newLabel1       = "label1/new"
+	newLabelValue11 = "label1-value1/new"
+	nonexist        = "nonexist"
+)
+
+type testTimeseries struct {
+	startTimestamp int
+	labelValues    []string
+	points         struct {
+		timestamp int
+		value     int
+	}
+}
 
 type testMetric struct {
 	name       string
 	labelKeys  []string
-	timeseries []struct {
-		startTimestamp int
-		labelValues    []string
-		points         struct {
-			timestamp int
-			value     int
-		}
-	}
+	timeseries []testTimeseries
 }
 
-// type metricsTransformTest struct {
-// 	name       string // test name
-// 	transforms []Transform
-// 	in         testMetric
-// 	out        testMetric
-// }
-
 type metricsTransformTest struct {
-	name           string // test name
-	transforms     []Transform
-	inMN           []string // input Metric names
-	outMN          []string // output Metric names
-	inLabels       []string
-	outLabels      []string
-	inLabelValues  [][]string
-	outLabelValues [][]string
+	name       string // test name
+	transforms []Transform
+	in         []testMetric
+	out        []testMetric
 }
 
 var (
-	initialMetricNames = []string{
-		"metric1",
-		"metric5",
-	}
-
-	outMetricNamesUpdateSingle = []string{
-		"metric1/new",
-		"metric5",
-	}
-	outMetricNamesUpdateMultiple = []string{
-		"metric1/new",
-		"metric5/new",
-	}
-
-	outMetricNamesInsertSingle = []string{
-		"metric1",
-		"metric5",
-		"metric1/new",
-	}
-
-	outMetricNamesInsertMultiple = []string{
-		"metric1",
-		"metric5",
-		"metric1/new",
-		"metric5/new",
-	}
-
-	initialLabels = []string{
-		"label1",
-		"label2",
-	}
-
-	outLabels = []string{
-		"label1/new",
-		"label2",
-	}
-
-	initialLabelValues = [][]string{
-		{
-			"label1-value1",
-			"label2-value1",
-		},
-		{
-			"label1-value2",
-			"label2-value2",
-		},
-	}
-
-	outLabelValues = [][]string{
-		{
-			"label1-value1/new",
-			"label2-value1",
-		},
-		{
-			"label1-value2",
-			"label2-value2",
-		},
-	}
-
-	initialAggregateLabelsMetric = metricspb.Metric{
-		MetricDescriptor: &metricspb.MetricDescriptor{
-			Name: "metric1",
-		},
-		Timeseries: []*metricspb.TimeSeries{
+	initialMetric = testMetric{
+		name:      metric1,
+		labelKeys: []string{label1, label2},
+		timeseries: []testTimeseries{
 			{
-				StartTimestamp: &timestamp.Timestamp{
-					Seconds: 1,
-				},
-				LabelValues: []*metricspb.LabelValue{
-					{
-						Value: "value1",
-					},
-					{
-						Value: "value2/1",
-					},
-				},
-				Points: []*metricspb.Point{
-					{
-						Timestamp: &timestamp.Timestamp{
-							Seconds: 2,
-						},
-						Value: &metricspb.Point_Int64Value{
-							Int64Value: 1,
-						},
-					},
-				},
-			},
-			{
-				StartTimestamp: &timestamp.Timestamp{
-					Seconds: 2,
-				},
-				LabelValues: []*metricspb.LabelValue{
-					{
-						Value: "value1",
-					},
-					{
-						Value: "value2/2",
-					},
-				},
-				Points: []*metricspb.Point{
-					{
-						Timestamp: &timestamp.Timestamp{
-							Seconds: 2,
-						},
-						Value: &metricspb.Point_Int64Value{
-							Int64Value: 1,
-						},
-					},
-				},
+				labelValues: []string{labelValue11, labelValue21},
 			},
 		},
 	}
 
-	outAggregateLabelsMetric = metricspb.Metric{
-		MetricDescriptor: &metricspb.MetricDescriptor{
-			Name: "metric1",
-		},
-		Timeseries: []*metricspb.TimeSeries{
+	initialMetricRename1 = testMetric{
+		name: metric1,
+	}
+
+	outMetricRename1 = testMetric{
+		name: newMetric1,
+	}
+
+	initialMetricRename2 = testMetric{
+		name: metric2,
+	}
+
+	outMetricRename2 = testMetric{
+		name: newMetric2,
+	}
+
+	initialMetricLabelRename1 = testMetric{
+		name:      metric1,
+		labelKeys: []string{label1, label2},
+	}
+
+	outMetricLabelRenameUpdate1 = testMetric{
+		name:      metric1,
+		labelKeys: []string{newLabel1, label2},
+	}
+
+	outMetricLabelRenameInsert1 = testMetric{
+		name:      newMetric1,
+		labelKeys: []string{newLabel1, label2},
+	}
+
+	initialLabelValueRename1 = testMetric{
+		name:      metric1,
+		labelKeys: []string{label1},
+		timeseries: []testTimeseries{
 			{
-				StartTimestamp: &timestamp.Timestamp{
-					Seconds: 1,
-				},
-				LabelValues: []*metricspb.LabelValue{
-					{
-						Value: "value1",
-					},
-				},
-				Points: []*metricspb.Point{
-					{
-						Timestamp: &timestamp.Timestamp{
-							Seconds: 2,
-						},
-						Value: &metricspb.Point_Int64Value{
-							Int64Value: 2,
-						},
-					},
-				},
+				labelValues: []string{labelValue11},
+			},
+			{
+				labelValues: []string{labelValue12},
+			},
+		},
+	}
+
+	outLabelValueRenameUpdate1 = testMetric{
+		name:      metric1,
+		labelKeys: []string{label1},
+		timeseries: []testTimeseries{
+			{
+				labelValues: []string{newLabelValue11},
+			},
+			{
+				labelValues: []string{labelValue12},
+			},
+		},
+	}
+
+	outLabelValueRenameInsert1 = testMetric{
+		name:      newMetric1,
+		labelKeys: []string{label1},
+		timeseries: []testTimeseries{
+			{
+				labelValues: []string{newLabelValue11},
+			},
+			{
+				labelValues: []string{labelValue12},
 			},
 		},
 	}
 
 	validUpateLabelOperation = Operation{
 		Action:   UpdateLabel,
-		Label:    "label1",
-		NewLabel: "label1/new",
+		Label:    label1,
+		NewLabel: newLabel1,
 	}
 
 	invalidUpdateLabelOperation = Operation{
 		Action:   UpdateLabel,
-		Label:    "label1",
-		NewLabel: "label2",
+		Label:    label1,
+		NewLabel: label2,
 	}
 
 	validUpdateLabelValueOperation = Operation{
 		Action: UpdateLabel,
-		Label:  "label1",
+		Label:  label1,
 		ValueActions: []ValueAction{
 			{
-				Value:    "label1-value1",
-				NewValue: "label1-value1/new",
+				Value:    labelValue11,
+				NewValue: newLabelValue11,
 			},
 		},
 	}
 
 	invalidUpdateLabelValueOperation = Operation{
 		Action: UpdateLabel,
-		Label:  "label1",
+		Label:  label1,
 		ValueActions: []ValueAction{
 			{
-				Value:    "label1-value1",
-				NewValue: "label1-value2",
+				Value:    labelValue11,
+				NewValue: labelValue12,
 			},
 		},
 	}
@@ -233,234 +177,192 @@ var (
 			name: "metric_name_update",
 			transforms: []Transform{
 				{
-					MetricName: "metric1",
+					MetricName: metric1,
 					Action:     Update,
-					NewName:    "metric1/new",
+					NewName:    newMetric1,
 				},
 			},
-			inMN:  initialMetricNames,
-			outMN: outMetricNamesUpdateSingle,
+			in:  []testMetric{initialMetricRename1},
+			out: []testMetric{outMetricRename1},
 		},
 		{
 			name: "metric_name_update_multiple",
 			transforms: []Transform{
 				{
-					MetricName: "metric1",
+					MetricName: metric1,
 					Action:     Update,
-					NewName:    "metric1/new",
+					NewName:    newMetric1,
 				},
 				{
-					MetricName: "metric5",
+					MetricName: metric2,
 					Action:     Update,
-					NewName:    "metric5/new",
+					NewName:    newMetric2,
 				},
 			},
-			inMN:  initialMetricNames,
-			outMN: outMetricNamesUpdateMultiple,
+			in:  []testMetric{initialMetricRename1, initialMetricRename2},
+			out: []testMetric{outMetricRename1, outMetricRename2},
 		},
 		{
 			name: "metric_name_update_nonexist",
 			transforms: []Transform{
 				{
-					MetricName: "metric100",
+					MetricName: nonexist,
 					Action:     Update,
-					NewName:    "metric1/new",
+					NewName:    newMetric1,
 				},
 			},
-			inMN:  initialMetricNames,
-			outMN: initialMetricNames,
+			in:  []testMetric{initialMetricRename1},
+			out: []testMetric{initialMetricRename1},
 		},
 		{
 			name: "metric_name_update_invalid",
 			transforms: []Transform{
 				{
-					MetricName: "metric1",
+					MetricName: metric1,
 					Action:     Update,
-					NewName:    "metric5",
+					NewName:    metric2,
 				},
 			},
-			inMN:  initialMetricNames,
-			outMN: initialMetricNames,
+			in:  []testMetric{initialMetricRename1, initialMetricRename2},
+			out: []testMetric{initialMetricRename1, initialMetricRename2},
 		},
 		{
 			name: "metric_label_update",
 			transforms: []Transform{
 				{
-					MetricName: "metric1",
+					MetricName: metric1,
 					Action:     Update,
 					Operations: []Operation{validUpateLabelOperation},
 				},
 			},
-			inMN:      initialMetricNames,
-			outMN:     initialMetricNames,
-			inLabels:  initialLabels,
-			outLabels: outLabels,
+			in:  []testMetric{initialMetricLabelRename1},
+			out: []testMetric{outMetricLabelRenameUpdate1},
 		},
 		{
 			name: "metric_label_update_invalid",
 			transforms: []Transform{
 				{
-					MetricName: "metric1",
+					MetricName: metric1,
 					Action:     Update,
 					Operations: []Operation{invalidUpdateLabelOperation},
 				},
 			},
-			inMN:      initialMetricNames,
-			outMN:     initialMetricNames,
-			inLabels:  initialLabels,
-			outLabels: initialLabels,
+			in:  []testMetric{initialMetricLabelRename1},
+			out: []testMetric{initialMetricLabelRename1},
 		},
 		{
 			name: "metric_label_value_update",
 			transforms: []Transform{
 				{
-					MetricName: "metric1",
+					MetricName: metric1,
 					Action:     Update,
 					Operations: []Operation{validUpdateLabelValueOperation},
 				},
 			},
-			inMN:           initialMetricNames,
-			outMN:          initialMetricNames,
-			inLabels:       initialLabels,
-			outLabels:      initialLabels,
-			inLabelValues:  initialLabelValues,
-			outLabelValues: outLabelValues,
+			in:  []testMetric{initialLabelValueRename1},
+			out: []testMetric{outLabelValueRenameUpdate1},
 		},
 		{
 			name: "metric_label_value_update_invalid",
 			transforms: []Transform{
 				{
-					MetricName: "metric1",
+					MetricName: metric1,
 					Action:     Update,
 					Operations: []Operation{invalidUpdateLabelValueOperation},
 				},
 			},
-			inMN:           initialMetricNames,
-			outMN:          initialMetricNames,
-			inLabels:       initialLabels,
-			outLabels:      initialLabels,
-			inLabelValues:  initialLabelValues,
-			outLabelValues: initialLabelValues,
+			in:  []testMetric{initialLabelValueRename1},
+			out: []testMetric{initialLabelValueRename1},
 		},
-		{
-			name: "metric_aggregation_across_labels",
-			transforms: []Transform{
-				{
-					MetricName: "metric1",
-					Action:     Update,
-					Operations: []Operation{},
-				},
-			},
-		},
-
 		// INSERT
 		{
 			name: "metric_name_insert",
 			transforms: []Transform{
 				{
-					MetricName: "metric1",
+					MetricName: metric1,
 					Action:     Insert,
-					NewName:    "metric1/new",
+					NewName:    newMetric1,
 				},
 			},
-			inMN:  initialMetricNames,
-			outMN: outMetricNamesInsertSingle,
+			in:  []testMetric{initialMetricRename1},
+			out: []testMetric{initialMetricRename1, outMetricRename1},
 		},
 		{
 			name: "metric_name_insert_multiple",
 			transforms: []Transform{
 				{
-					MetricName: "metric1",
+					MetricName: metric1,
 					Action:     Insert,
-					NewName:    "metric1/new",
+					NewName:    newMetric1,
 				},
 				{
-					MetricName: "metric5",
+					MetricName: metric2,
 					Action:     Insert,
-					NewName:    "metric5/new",
+					NewName:    newMetric2,
 				},
 			},
-			inMN:  initialMetricNames,
-			outMN: outMetricNamesInsertMultiple,
+			in:  []testMetric{initialMetricRename1, initialMetricRename2},
+			out: []testMetric{initialMetricRename1, initialMetricRename2, outMetricRename1, outMetricRename2},
 		},
 		{
 			name: "metric_label_update_with_metric_insert",
 			transforms: []Transform{
 				{
-					MetricName: "metric1",
+					MetricName: metric1,
 					Action:     Insert,
-					NewName:    "metric1/new",
+					NewName:    newMetric1,
 					Operations: []Operation{validUpateLabelOperation},
 				},
 			},
-			inMN:      initialMetricNames,
-			outMN:     outMetricNamesInsertSingle,
-			inLabels:  initialLabels,
-			outLabels: outLabels,
+			in:  []testMetric{initialMetricLabelRename1},
+			out: []testMetric{initialMetricLabelRename1, outMetricLabelRenameInsert1},
 		},
 		{
 			name: "metric_label_value_update_with_metric_insert",
 			transforms: []Transform{
 				{
-					MetricName: "metric1",
+					MetricName: metric1,
 					Action:     Insert,
-					NewName:    "metric1/new",
+					NewName:    newMetric1,
 					Operations: []Operation{validUpdateLabelValueOperation},
 				},
 			},
-			inMN:           initialMetricNames,
-			outMN:          outMetricNamesInsertSingle,
-			inLabels:       initialLabels,
-			outLabels:      initialLabels,
-			inLabelValues:  initialLabelValues,
-			outLabelValues: outLabelValues,
+			in:  []testMetric{initialLabelValueRename1},
+			out: []testMetric{initialLabelValueRename1, outLabelValueRenameInsert1},
 		},
 	}
 )
 
 func constructTestInputMetricsData(test metricsTransformTest) consumerdata.MetricsData {
 	md := consumerdata.MetricsData{
-		Metrics: make([]*metricspb.Metric, len(test.inMN)),
+		Metrics: make([]*metricspb.Metric, len(test.in)),
 	}
-	for idx, in := range test.inMN {
+	for idx, in := range test.in {
 		// construct label keys
-		labels := make([]*metricspb.LabelKey, 0)
-		for _, l := range test.inLabels {
-			labels = append(
-				labels,
-				&metricspb.LabelKey{
-					Key: l,
-				},
-			)
-		}
-		// construct label values
-		labelValueSets := make([][]*metricspb.LabelValue, 0)
-		for _, values := range test.inLabelValues {
-			labelValueSet := make([]*metricspb.LabelValue, 0)
-			for _, value := range values {
-				labelValueSet = append(
-					labelValueSet,
-					&metricspb.LabelValue{
-						Value: value,
-					},
-				)
+		labels := make([]*metricspb.LabelKey, len(in.labelKeys))
+		for lidx, l := range in.labelKeys {
+			labels[lidx] = &metricspb.LabelKey{
+				Key: l,
 			}
-			labelValueSets = append(labelValueSets, labelValueSet)
 		}
-		timeseries := make([]*metricspb.TimeSeries, 0)
-		for _, valueSet := range labelValueSets {
-			timeseries = append(
-				timeseries,
-				&metricspb.TimeSeries{
-					LabelValues: valueSet,
-				},
-			)
+		// construct timeseries with label values
+		timeseries := make([]*metricspb.TimeSeries, len(in.timeseries))
+		for tidx, ts := range in.timeseries {
+			labelValues := make([]*metricspb.LabelValue, len(ts.labelValues))
+			for vidx, value := range ts.labelValues {
+				labelValues[vidx] = &metricspb.LabelValue{
+					Value: value,
+				}
+			}
+			timeseries[tidx] = &metricspb.TimeSeries{
+				LabelValues: labelValues,
+			}
 		}
 
 		// compose the metric
 		md.Metrics[idx] = &metricspb.Metric{
 			MetricDescriptor: &metricspb.MetricDescriptor{
-				Name:      in,
+				Name:      in.name,
 				LabelKeys: labels,
 			},
 			Timeseries: timeseries,

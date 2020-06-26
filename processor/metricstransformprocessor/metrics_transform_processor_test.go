@@ -65,40 +65,20 @@ func TestMetricsTransformProcessor(t *testing.T) {
 			require.Equal(t, 1, len(got))
 			gotMD := pdatautil.MetricsToMetricsData(got[0])
 			require.Equal(t, 1, len(gotMD))
-			require.Equal(t, len(test.outMN), len(gotMD[0].Metrics))
+			actualOut := gotMD[0].Metrics
+			require.Equal(t, len(test.out), len(actualOut))
 
-			for _, transform := range test.transforms {
-				targetName := transform.MetricName
-				if transform.NewName != "" {
-					targetName = transform.NewName
+			for idx, out := range test.out {
+				// name
+				assert.Equal(t, out.name, actualOut[idx].MetricDescriptor.Name)
+				// label keys
+				for lidx, l := range out.labelKeys {
+					assert.Equal(t, l, actualOut[idx].MetricDescriptor.LabelKeys[lidx].Key)
 				}
-				for idx, out := range gotMD[0].Metrics {
-					// check name
-					assert.Equal(t, test.outMN[idx], out.MetricDescriptor.Name)
-					// check labels
-					// check the updated or inserted is correctly updated
-					if out.MetricDescriptor.Name == targetName {
-						for lidx, l := range out.MetricDescriptor.LabelKeys {
-							assert.Equal(t, test.outLabels[lidx], l.Key)
-						}
-						for tidx, ts := range out.Timeseries {
-							for lidx, v := range ts.LabelValues {
-								assert.Equal(t, test.outLabelValues[tidx][lidx], v.Value)
-							}
-						}
-					}
-					// check the original is untouched if insert
-					if transform.Action == Insert {
-						if out.MetricDescriptor.Name == transform.MetricName {
-							for lidx, l := range out.MetricDescriptor.LabelKeys {
-								assert.Equal(t, test.inLabels[lidx], l.Key)
-							}
-							for tidx, ts := range out.Timeseries {
-								for lidx, v := range ts.LabelValues {
-									assert.Equal(t, test.inLabelValues[tidx][lidx], v.Value)
-								}
-							}
-						}
+				// label values
+				for tidx, ts := range out.timeseries {
+					for vidx, v := range ts.labelValues {
+						assert.Equal(t, v, actualOut[idx].Timeseries[tidx].LabelValues[vidx].Value)
 					}
 				}
 			}
@@ -114,15 +94,15 @@ func BenchmarkMetricsTransformProcessorRenameMetrics(b *testing.B) {
 		name: "1000Metrics",
 		transforms: []Transform{
 			{
-				MetricName: "metric1",
-				Action:     "insert",
-				NewName:    "newname",
+				MetricName: metric1,
+				Action:     Insert,
+				NewName:    newMetric1,
 			},
 		},
 	}
 
-	for len(stressTest.inMN) < 1000 {
-		stressTest.inMN = append(stressTest.inMN, initialMetricNames...)
+	for len(stressTest.in) < 1000 {
+		stressTest.in = append(stressTest.in, initialMetricRename1)
 	}
 
 	benchmarkTests := []metricsTransformTest{stressTest}
