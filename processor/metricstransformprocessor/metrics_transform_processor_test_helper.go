@@ -57,6 +57,7 @@ type metricsTransformTest struct {
 }
 
 var (
+	// test metrics
 	initialMetric = testMetric{
 		name:      metric1,
 		labelKeys: []string{label1, label2},
@@ -137,6 +138,7 @@ var (
 		},
 	}
 
+	// operations
 	validUpateLabelOperation = Operation{
 		Action:   UpdateLabel,
 		Label:    label1,
@@ -171,6 +173,7 @@ var (
 		},
 	}
 
+	// test cases
 	standardTests = []metricsTransformTest{
 		// UPDATE
 		{
@@ -333,6 +336,7 @@ var (
 	}
 )
 
+// constructTestInputMetricsDate builds the actual metrics from the test cases
 func constructTestInputMetricsData(test metricsTransformTest) consumerdata.MetricsData {
 	md := consumerdata.MetricsData{
 		Metrics: make([]*metricspb.Metric, len(test.in)),
