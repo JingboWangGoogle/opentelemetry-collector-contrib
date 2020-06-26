@@ -55,36 +55,64 @@ func (mtp *metricsTransformProcessor) update(metricPtr *metricspb.Metric, transf
 			}
 		}
 		// aggregate across labels
-		if op.Action == AggregateLabels {
-			// labelSet is a set of labels to keep
-			labelSet := make(map[string]bool)
-			for _, label := range op.LabelSet {
-				labelSet[label] = true
-			}
-			// labelIdxs is a slice containing the indices of the labels to keep. This is needed because label values are ordered in the same order as the labels
-			labelIdxs := make([]int, 0)
-			for idx, label := range metricPtr.MetricDescriptor.LabelKeys {
-				_, ok := labelSet[label.Key]
-				if ok {
-					labelIdxs = append(labelIdxs, idx)
-				}
-			}
-			// labelValuesToTimeseriesMap groups data points by the label values
-			labelValuesToTimeseriesMap := make(map[string][]*metricspb.TimeSeries)
-			for _, timeseries := range metricPtr.Timeseries {
-				var composedValuesKey string
-				for _, vidx := range labelIdxs {
-					composedValuesKey += timeseries.LabelValues[vidx].Value
-				}
-				timeseriesGroup, ok := labelValuesToTimeseriesMap[composedValuesKey]
-				if ok {
-					labelValuesToTimeseriesMap[composedValuesKey] = append(timeseriesGroup, timeseries)
-				} else {
-					labelValuesToTimeseriesMap[composedValuesKey] = make([]*metricspb.TimeSeries, 0)
-				}
-			}
+		// if op.Action == AggregateLabels {
+		// 	// labelSet is a set of labels to keep
+		// 	labelSet := make(map[string]bool)
+		// 	for _, label := range op.LabelSet {
+		// 		labelSet[label] = true
+		// 	}
+		// 	// labelIdxs is a slice containing the indices of the labels to keep. This is needed because label values are ordered in the same order as the labels
+		// 	labelIdxs := make([]int, 0)
+		// 	for idx, label := range metricPtr.MetricDescriptor.LabelKeys {
+		// 		_, ok := labelSet[label.Key]
+		// 		if ok {
+		// 			labelIdxs = append(labelIdxs, idx)
+		// 		}
+		// 	}
+		// 	// key is a copmosite of the label values as a single string
+		// 	// keyToTimeseriesMap groups data points by the label values
+		// 	keyToTimeseriesMap := make(map[string][]*metricspb.TimeSeries)
+		// 	// keyToLabelValuesMap groups maps to the actual label values objects
+		// 	keyToLabelValuesMap := make(map[string][]*metricspb.LabelValue)
+		// 	for _, timeseries := range metricPtr.Timeseries {
+		// 		var composedValues string
+		// 		newLabelValues := make([]*metricspb.LabelValue, 0)
+		// 		for _, vidx := range labelIdxs {
+		// 			composedValues += timeseries.LabelValues[vidx].Value
+		// 			newLabelValues = append(newLabelValues, timeseries.LabelValues[vidx])
+		// 		}
+		// 		timeseriesGroup, ok := keyToTimeseriesMap[composedValues]
+		// 		if ok {
+		// 			keyToTimeseriesMap[composedValues] = append(timeseriesGroup, timeseries)
+		// 		} else {
+		// 			keyToTimeseriesMap[composedValues] = []*metricspb.TimeSeries{timeseries}
+		// 			keyToLabelValuesMap[composedValues] = newLabelValues
+		// 		}
+		// 	}
+		// 	// iterate over the map to compose each group into one timeseries
+		// 	newTimeSeries := make([]*metricspb.TimeSeries, 0)
+		// 	for key, element := range keyToTimeseriesMap {
+		// 		if (len(element) > 0) {
+		// 			timestampToPointIdx := make(map[timestamp.Timestamp]int)
+		// 			newPoints := make([]*metricspb.Point, 0)
+		// 			newSingleTimeSeries := &metricspb.TimeSeries{
+		// 				LabelValues: keyToLabelValuesMap[key],
+		// 			}
+		// 			for _, ts := range element {
+		// 				for _, p := range ts.Points {
+		// 					if idx, ok := timestampToPointIdx[*p.Timestamp]; ok {
+		// 						newPoints[idx].Value += p.Value
+		// 					} else {
+		// 						timestampToPointIdx[*p.Timestamp] = len(newPoints)
+		// 						newPoints = append(newPoints, p)
+		// 					}
+		// 				}
+		// 			}
+		// 		} else {
 
-		}
+		// 		}
+		// 	}
+		// }
 	}
 }
 

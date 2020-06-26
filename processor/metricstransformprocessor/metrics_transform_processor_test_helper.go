@@ -16,8 +16,29 @@ package metricstransformprocessor
 
 import (
 	metricspb "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1"
+	"github.com/golang/protobuf/ptypes/timestamp"
 	"go.opentelemetry.io/collector/consumer/consumerdata"
 )
+
+type testMetric struct {
+	name       string
+	labelKeys  []string
+	timeseries []struct {
+		startTimestamp int
+		labelValues    []string
+		points         struct {
+			timestamp int
+			value     int
+		}
+	}
+}
+
+// type metricsTransformTest struct {
+// 	name       string // test name
+// 	transforms []Transform
+// 	in         testMetric
+// 	out        testMetric
+// }
 
 type metricsTransformTest struct {
 	name           string // test name
@@ -87,6 +108,88 @@ var (
 		{
 			"label1-value2",
 			"label2-value2",
+		},
+	}
+
+	initialAggregateLabelsMetric = metricspb.Metric{
+		MetricDescriptor: &metricspb.MetricDescriptor{
+			Name: "metric1",
+		},
+		Timeseries: []*metricspb.TimeSeries{
+			{
+				StartTimestamp: &timestamp.Timestamp{
+					Seconds: 1,
+				},
+				LabelValues: []*metricspb.LabelValue{
+					{
+						Value: "value1",
+					},
+					{
+						Value: "value2/1",
+					},
+				},
+				Points: []*metricspb.Point{
+					{
+						Timestamp: &timestamp.Timestamp{
+							Seconds: 2,
+						},
+						Value: &metricspb.Point_Int64Value{
+							Int64Value: 1,
+						},
+					},
+				},
+			},
+			{
+				StartTimestamp: &timestamp.Timestamp{
+					Seconds: 2,
+				},
+				LabelValues: []*metricspb.LabelValue{
+					{
+						Value: "value1",
+					},
+					{
+						Value: "value2/2",
+					},
+				},
+				Points: []*metricspb.Point{
+					{
+						Timestamp: &timestamp.Timestamp{
+							Seconds: 2,
+						},
+						Value: &metricspb.Point_Int64Value{
+							Int64Value: 1,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	outAggregateLabelsMetric = metricspb.Metric{
+		MetricDescriptor: &metricspb.MetricDescriptor{
+			Name: "metric1",
+		},
+		Timeseries: []*metricspb.TimeSeries{
+			{
+				StartTimestamp: &timestamp.Timestamp{
+					Seconds: 1,
+				},
+				LabelValues: []*metricspb.LabelValue{
+					{
+						Value: "value1",
+					},
+				},
+				Points: []*metricspb.Point{
+					{
+						Timestamp: &timestamp.Timestamp{
+							Seconds: 2,
+						},
+						Value: &metricspb.Point_Int64Value{
+							Int64Value: 2,
+						},
+					},
+				},
+			},
 		},
 	}
 
@@ -239,6 +342,17 @@ var (
 			inLabelValues:  initialLabelValues,
 			outLabelValues: initialLabelValues,
 		},
+		{
+			name: "metric_aggregation_across_labels",
+			transforms: []Transform{
+				{
+					MetricName: "metric1",
+					Action:     Update,
+					Operations: []Operation{},
+				},
+			},
+		},
+
 		// INSERT
 		{
 			name: "metric_name_insert",
