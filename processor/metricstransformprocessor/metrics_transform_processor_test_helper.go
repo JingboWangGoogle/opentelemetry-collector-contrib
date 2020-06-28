@@ -197,6 +197,30 @@ var (
 		AggregationType: Max,
 	}
 
+	validUpdateLabelValuesAggrSumOperation = Operation{
+		Action:           AggregateLabelValues,
+		Label:            label1,
+		AggregatedValues: []string{labelValue11, labelValue12},
+		NewValue:         newLabelValue11,
+		AggregationType:  Sum,
+	}
+
+	validUpdateLabelValuesAggrAverageOperation = Operation{
+		Action:           AggregateLabelValues,
+		Label:            label1,
+		AggregatedValues: []string{labelValue11, labelValue12},
+		NewValue:         newLabelValue11,
+		AggregationType:  Average,
+	}
+
+	validUpdateLabelValuesAggrMaxOperation = Operation{
+		Action:           AggregateLabelValues,
+		Label:            label1,
+		AggregatedValues: []string{labelValue11, labelValue12},
+		NewValue:         newLabelValue11,
+		AggregationType:  Max,
+	}
+
 	// test cases
 	standardTests = []metricsTransformTest{
 		// UPDATE
@@ -373,6 +397,78 @@ var (
 			in:  []testMetric{inLabelAggrBuilder(3, 1, false, true)},
 			out: []testMetric{outLabelAggrBuilder(3, false, true)},
 		},
+		{
+			name: "metric_label_values_aggregation_sum_int_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelValuesAggrSumOperation},
+				},
+			},
+			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, true, false)},
+			out: []testMetric{outLabelValuesAggrBuilder(4, true, false)},
+		},
+		{
+			name: "metric_label_values_aggregation_average_int_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelValuesAggrAverageOperation},
+				},
+			},
+			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, true, false)},
+			out: []testMetric{outLabelValuesAggrBuilder(2, true, false)},
+		},
+		{
+			name: "metric_label_values_aggregation_max_int_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelValuesAggrMaxOperation},
+				},
+			},
+			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, true, false)},
+			out: []testMetric{outLabelValuesAggrBuilder(3, true, false)},
+		},
+		{
+			name: "metric_label_values_aggregation_sum_double_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelValuesAggrSumOperation},
+				},
+			},
+			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, false, true)},
+			out: []testMetric{outLabelValuesAggrBuilder(4, false, true)},
+		},
+		{
+			name: "metric_label_values_aggregation_average_double_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelValuesAggrAverageOperation},
+				},
+			},
+			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, false, true)},
+			out: []testMetric{outLabelValuesAggrBuilder(2, false, true)},
+		},
+		{
+			name: "metric_label_values_aggregation_max_double_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelValuesAggrMaxOperation},
+				},
+			},
+			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, false, true)},
+			out: []testMetric{outLabelValuesAggrBuilder(3, false, true)},
+		},
 		// INSERT
 		{
 			name: "metric_name_insert",
@@ -440,6 +536,18 @@ var (
 			},
 			in:  []testMetric{inLabelAggrBuilder(1, 3, true, false)},
 			out: []testMetric{inLabelAggrBuilder(1, 3, true, false), outLabelAggrBuilder(4, true, false)},
+		},
+		{
+			name: "metric_label_values_aggregation_sum_int_insert",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Insert,
+					Operations: []Operation{validUpdateLabelValuesAggrSumOperation},
+				},
+			},
+			in:  []testMetric{inLabelValuesAggrBuilder(1, 3, true, false)},
+			out: []testMetric{inLabelValuesAggrBuilder(1, 3, true, false), outLabelValuesAggrBuilder(4, true, false)},
 		},
 	}
 )
@@ -554,6 +662,62 @@ func inLabelAggrBuilder(value1 int, value2 int, isInt bool, isDouble bool) testM
 			{
 				startTimestamp: 1,
 				labelValues:    []string{labelValue11, labelValue22},
+				points: []testPoint{
+					{
+						timestamp: 2,
+						value:     value2,
+						isInt64:   isInt,
+						isDouble:  isDouble,
+					},
+				},
+			},
+		},
+	}
+	return outMetric
+}
+
+func outLabelValuesAggrBuilder(value int, isInt bool, isDouble bool) testMetric {
+	outMetric := testMetric{
+		name:      metric1,
+		labelKeys: []string{label1, label2},
+		timeseries: []testTimeseries{
+			{
+				startTimestamp: 1,
+				labelValues:    []string{newLabelValue11, labelValue21},
+				points: []testPoint{
+					{
+						timestamp: 2,
+						value:     value,
+						isInt64:   isInt,
+						isDouble:  isDouble,
+					},
+				},
+			},
+		},
+	}
+	return outMetric
+}
+
+func inLabelValuesAggrBuilder(value1 int, value2 int, isInt bool, isDouble bool) testMetric {
+	outMetric := testMetric{
+		name:      metric1,
+		labelKeys: []string{label1, label2},
+		timeseries: []testTimeseries{
+			{
+				startTimestamp: 2,
+				labelValues:    []string{labelValue11, labelValue21},
+				points: []testPoint{
+					{
+						timestamp: 2,
+						value:     value1,
+						isInt64:   isInt,
+						isDouble:  isDouble,
+					},
+				},
+			},
+			{
+				startTimestamp: 1,
+				labelValues:    []string{labelValue12, labelValue21},
 				points: []testPoint{
 					{
 						timestamp: 2,

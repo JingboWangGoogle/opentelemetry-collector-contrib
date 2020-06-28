@@ -63,13 +63,23 @@ func (mtp *metricsTransformProcessor) update(metricPtr *metricspb.Metric, transf
 			// key is a composite of the label values as a single string
 			// keyToTimeseriesMap groups timeseries by the label values
 			// keyToLabelValuesMap groups the actual label values objects
-			keyToTimeseriesMap, keyToLabelValuesMap := mtp.constructAggrGroupsMaps(metricPtr, labelIdxs)
+			keyToTimeseriesMap, keyToLabelValuesMap := mtp.constructAggrGroupsMaps(metricPtr, labelIdxs, "")
 
 			// compose groups into timeseries
 			newTimeseries := mtp.composeTimeseriesGroups(keyToTimeseriesMap, keyToLabelValuesMap, op.AggregationType)
 
 			metricPtr.Timeseries = newTimeseries
 			metricPtr.MetricDescriptor.LabelKeys = labels
+		}
+		//aggregate across label values
+		if op.Action == AggregateLabelValues {
+			labelSet := mtp.sliceToSet([]string{op.Label})
+			labelIdxs, _ := mtp.getLabelIdxs(metricPtr, labelSet)
+			keyToTimeseriesMap, keyToLabelValuesMap := mtp.constructAggrGroupsMaps(metricPtr, labelIdxs, op.NewValue)
+			newTimeseries := mtp.composeTimeseriesGroups(keyToTimeseriesMap, keyToLabelValuesMap, op.AggregationType)
+
+			metricPtr.Timeseries = newTimeseries
+
 		}
 	}
 }
@@ -189,7 +199,7 @@ func (mtp *metricsTransformProcessor) getLabelIdxs(metricPtr *metricspb.Metric, 
 	return labelIdxs, labels
 }
 
-func (mtp *metricsTransformProcessor) constructAggrGroupsMaps(metricPtr *metricspb.Metric, labelIdxs []int) (map[string][]*metricspb.TimeSeries, map[string][]*metricspb.LabelValue) {
+func (mtp *metricsTransformProcessor) constructAggrGroupsMaps(metricPtr *metricspb.Metric, labelIdxs []int, newValue string) (map[string][]*metricspb.TimeSeries, map[string][]*metricspb.LabelValue) {
 	// key is a composite of the label values as a single string
 	// keyToTimeseriesMap groups timeseries by the label values
 	keyToTimeseriesMap := make(map[string][]*metricspb.TimeSeries)
@@ -199,10 +209,28 @@ func (mtp *metricsTransformProcessor) constructAggrGroupsMaps(metricPtr *metrics
 		// composedValues is the key, the composite of the label values as a single string
 		var composedValues string
 		// newLabelValues are the label values after aggregation, dropping the excluded ones
-		newLabelValues := make([]*metricspb.LabelValue, len(labelIdxs))
-		for i, vidx := range labelIdxs {
-			composedValues += timeseries.LabelValues[vidx].Value
-			newLabelValues[i] = timeseries.LabelValues[vidx]
+		var newLabelValues []*metricspb.LabelValue
+		if newValue == "" {
+			newLabelValues = make([]*metricspb.LabelValue, len(labelIdxs))
+			for i, vidx := range labelIdxs {
+				composedValues += timeseries.LabelValues[vidx].Value
+				newLabelValues[i] = timeseries.LabelValues[vidx]
+			}
+		} else {
+			newLabelValues = make([]*metricspb.LabelValue, len(metricPtr.MetricDescriptor.LabelKeys))
+			labelIdx := labelIdxs[0]
+			for i, labelValue := range timeseries.LabelValues {
+				if labelIdx == i {
+					composedValues += newValue
+					newLabelValues[i] = &metricspb.LabelValue{
+						Value:    newValue,
+						HasValue: labelValue.HasValue,
+					}
+				} else {
+					composedValues += labelValue.Value
+					newLabelValues[i] = labelValue
+				}
+			}
 		}
 		timeseriesGroup, ok := keyToTimeseriesMap[composedValues]
 		if ok {
