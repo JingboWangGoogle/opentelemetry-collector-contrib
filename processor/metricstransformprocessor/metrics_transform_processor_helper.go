@@ -178,6 +178,7 @@ func (mtp *metricsTransformProcessor) validNewLabelValue(timeseries []*metricspb
 	return true
 }
 
+// sliceToSet converts slice to set
 func (mtp *metricsTransformProcessor) sliceToSet(slice []string) map[string]bool {
 	set := make(map[string]bool)
 	for _, label := range slice {
@@ -186,6 +187,7 @@ func (mtp *metricsTransformProcessor) sliceToSet(slice []string) map[string]bool
 	return set
 }
 
+// getLabelIdxs gets the indices of the labels in the labelSet in a metric's descriptor
 func (mtp *metricsTransformProcessor) getLabelIdxs(metricPtr *metricspb.Metric, labelSet map[string]bool) ([]int, []*metricspb.LabelKey) {
 	labelIdxs := make([]int, 0)
 	labels := make([]*metricspb.LabelKey, 0)
@@ -199,6 +201,7 @@ func (mtp *metricsTransformProcessor) getLabelIdxs(metricPtr *metricspb.Metric, 
 	return labelIdxs, labels
 }
 
+// constructAggrGroupsMaps groups timeseries into groups that will be aggregated together
 func (mtp *metricsTransformProcessor) constructAggrGroupsMaps(metricPtr *metricspb.Metric, labelIdxs []int, newValue string) (map[string][]*metricspb.TimeSeries, map[string][]*metricspb.LabelValue) {
 	// key is a composite of the label values as a single string
 	// keyToTimeseriesMap groups timeseries by the label values
@@ -243,6 +246,7 @@ func (mtp *metricsTransformProcessor) constructAggrGroupsMaps(metricPtr *metrics
 	return keyToTimeseriesMap, keyToLabelValuesMap
 }
 
+// composeTimeseriesGroups merges each group into one timeseries
 func (mtp *metricsTransformProcessor) composeTimeseriesGroups(keyToTimeseriesMap map[string][]*metricspb.TimeSeries, keyToLabelValuesMap map[string][]*metricspb.LabelValue, aggrType AggregationType) []*metricspb.TimeSeries {
 	newTimeSeries := make([]*metricspb.TimeSeries, len(keyToTimeseriesMap))
 	idxCounter := 0
@@ -291,6 +295,7 @@ func (mtp *metricsTransformProcessor) composeTimeseriesGroups(keyToTimeseriesMap
 	return newTimeSeries
 }
 
+// compute merges points into one point based on the provided aggregation type
 func (mtp *metricsTransformProcessor) compute(points []*metricspb.Point, aggrType AggregationType) (*metricspb.Point_Int64Value, *metricspb.Point_DoubleValue) {
 	intVal := int64(0)
 	doubleVal := float64(0)
