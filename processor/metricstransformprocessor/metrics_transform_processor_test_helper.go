@@ -37,10 +37,15 @@ const (
 )
 
 type testPoint struct {
-	timestamp int64
-	value     int
-	isInt64   bool
-	isDouble  bool
+	timestamp             int64
+	value                 int
+	count                 int64
+	sum                   float64
+	bounds                []float64
+	buckets               []int64
+	sumOfSquaredDeviation float64
+	isInt64               bool
+	isDouble              bool
 }
 
 type testTimeseries struct {
@@ -469,6 +474,73 @@ var (
 			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, false, true)},
 			out: []testMetric{outLabelValuesAggrBuilder(3, false, true)},
 		},
+		{
+			name: "metric_label_values_aggregation_sum_distribution_update",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Update,
+					Operations: []Operation{validUpdateLabelAggrSumOperation},
+				},
+			},
+			in: []testMetric{
+				metricBuilder(
+					false,
+					false,
+					[]string{label1, label2},
+					[][]string{
+						{labelValue11, labelValue21},
+						{labelValue11, labelValue22},
+					},
+					[]int64{1, 3},
+					[][]testPoint{
+						{
+							{
+								timestamp:             1,
+								count:                 3,
+								sum:                   6,
+								bounds:                []float64{1, 2},
+								buckets:               []int64{0, 1, 2},
+								sumOfSquaredDeviation: 3,
+							},
+						},
+						{
+							{
+								timestamp:             1,
+								count:                 5,
+								sum:                   10,
+								bounds:                []float64{1, 2},
+								buckets:               []int64{1, 1, 3},
+								sumOfSquaredDeviation: 4,
+							},
+						},
+					},
+				),
+			},
+			out: []testMetric{
+				metricBuilder(
+					false,
+					false,
+					[]string{label1},
+					[][]string{
+						{labelValue11},
+					},
+					[]int64{1},
+					[][]testPoint{
+						{
+							{
+								timestamp:             1,
+								count:                 8,
+								sum:                   16,
+								bounds:                []float64{1, 2},
+								buckets:               []int64{1, 2, 5},
+								sumOfSquaredDeviation: 7,
+							},
+						},
+					},
+				),
+			},
+		},
 		// INSERT
 		{
 			name: "metric_name_insert",
@@ -549,6 +621,105 @@ var (
 			in:  []testMetric{inLabelValuesAggrBuilder(1, 3, true, false)},
 			out: []testMetric{inLabelValuesAggrBuilder(1, 3, true, false), outLabelValuesAggrBuilder(4, true, false)},
 		},
+		{
+			name: "metric_label_values_aggregation_sum_distribution_insert",
+			transforms: []Transform{
+				{
+					MetricName: metric1,
+					Action:     Insert,
+					Operations: []Operation{validUpdateLabelAggrSumOperation},
+				},
+			},
+			in: []testMetric{
+				metricBuilder(
+					false,
+					false,
+					[]string{label1, label2},
+					[][]string{
+						{labelValue11, labelValue21},
+						{labelValue11, labelValue22},
+					},
+					[]int64{1, 3},
+					[][]testPoint{
+						{
+							{
+								timestamp:             1,
+								count:                 3,
+								sum:                   6,
+								bounds:                []float64{1, 2},
+								buckets:               []int64{0, 1, 2},
+								sumOfSquaredDeviation: 3,
+							},
+						},
+						{
+							{
+								timestamp:             1,
+								count:                 5,
+								sum:                   10,
+								bounds:                []float64{1, 2},
+								buckets:               []int64{1, 1, 3},
+								sumOfSquaredDeviation: 4,
+							},
+						},
+					},
+				),
+			},
+			out: []testMetric{
+				metricBuilder(
+					false,
+					false,
+					[]string{label1, label2},
+					[][]string{
+						{labelValue11, labelValue21},
+						{labelValue11, labelValue22},
+					},
+					[]int64{1, 3},
+					[][]testPoint{
+						{
+							{
+								timestamp:             1,
+								count:                 3,
+								sum:                   6,
+								bounds:                []float64{1, 2},
+								buckets:               []int64{0, 1, 2},
+								sumOfSquaredDeviation: 3,
+							},
+						},
+						{
+							{
+								timestamp:             1,
+								count:                 5,
+								sum:                   10,
+								bounds:                []float64{1, 2},
+								buckets:               []int64{1, 1, 3},
+								sumOfSquaredDeviation: 4,
+							},
+						},
+					},
+				),
+				metricBuilder(
+					false,
+					false,
+					[]string{label1},
+					[][]string{
+						{labelValue11},
+					},
+					[]int64{1},
+					[][]testPoint{
+						{
+							{
+								timestamp:             1,
+								count:                 8,
+								sum:                   16,
+								bounds:                []float64{1, 2},
+								buckets:               []int64{1, 2, 5},
+								sumOfSquaredDeviation: 7,
+							},
+						},
+					},
+				),
+			},
+		},
 	}
 )
 
@@ -591,9 +762,25 @@ func constructTestInputMetricsData(test metricsTransformTest) consumerdata.Metri
 						DoubleValue: float64(p.value),
 					}
 				} else {
+					buckets := make([]*metricspb.DistributionValue_Bucket, len(p.buckets))
+					for buIdx, bucket := range p.buckets {
+						buckets[buIdx] = &metricspb.DistributionValue_Bucket{
+							Count: bucket,
+						}
+					}
 					points[pidx].Value = &metricspb.Point_DistributionValue{
 						DistributionValue: &metricspb.DistributionValue{
-							Count: int64(p.value),
+							BucketOptions: &metricspb.DistributionValue_BucketOptions{
+								Type: &metricspb.DistributionValue_BucketOptions_Explicit_{
+									Explicit: &metricspb.DistributionValue_BucketOptions_Explicit{
+										Bounds: p.bounds,
+									},
+								},
+							},
+							Count:                 p.count,
+							Sum:                   p.sum,
+							Buckets:               buckets,
+							SumOfSquaredDeviation: p.sumOfSquaredDeviation,
 						},
 					}
 				}
@@ -728,6 +915,40 @@ func inLabelValuesAggrBuilder(value1 int, value2 int, isInt bool, isDouble bool)
 				},
 			},
 		},
+	}
+	return outMetric
+}
+
+func metricBuilder(isInt bool, isDouble bool, labels []string, labelValuesSet [][]string, startTimestamps []int64, pointsSet [][]testPoint) testMetric {
+	timeseries := make([]testTimeseries, len(labelValuesSet))
+	for i := 0; i < len(timeseries); i++ {
+		points := make([]testPoint, len(pointsSet[i]))
+		for j := 0; j < len(points); j++ {
+			p := pointsSet[i][j]
+			points[j] = testPoint{
+				timestamp:             p.timestamp,
+				value:                 p.value,
+				count:                 p.count,
+				sum:                   p.sum,
+				bounds:                p.bounds,
+				buckets:               p.buckets,
+				sumOfSquaredDeviation: p.sumOfSquaredDeviation,
+				isInt64:               isInt,
+				isDouble:              isDouble,
+			}
+		}
+
+		timeseries[i] = testTimeseries{
+			startTimestamp: startTimestamps[i],
+			labelValues:    labelValuesSet[i],
+			points:         points,
+		}
+	}
+
+	outMetric := testMetric{
+		name:       metric1,
+		labelKeys:  labels,
+		timeseries: timeseries,
 	}
 	return outMetric
 }

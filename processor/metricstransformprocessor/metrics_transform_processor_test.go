@@ -97,6 +97,16 @@ func TestMetricsTransformProcessor(t *testing.T) {
 							assert.Equal(t, int64(p.value), actualPoint.GetInt64Value())
 						} else if p.isDouble {
 							assert.Equal(t, float64(p.value), actualPoint.GetDoubleValue())
+						} else {
+							assert.Equal(t, p.sum, actualPoint.GetDistributionValue().GetSum())
+							assert.Equal(t, p.count, actualPoint.GetDistributionValue().GetCount())
+							assert.Equal(t, p.sumOfSquaredDeviation, actualPoint.GetDistributionValue().GetSumOfSquaredDeviation())
+							for boIdx, bound := range p.bounds {
+								assert.Equal(t, bound, actualPoint.GetDistributionValue().GetBucketOptions().GetExplicit().Bounds[boIdx])
+							}
+							for buIdx, bucket := range p.buckets {
+								assert.Equal(t, bucket, actualPoint.GetDistributionValue().GetBuckets()[buIdx].Count)
+							}
 						}
 					}
 				}

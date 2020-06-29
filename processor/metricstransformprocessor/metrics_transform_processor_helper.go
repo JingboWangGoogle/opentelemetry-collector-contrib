@@ -16,6 +16,7 @@ package metricstransformprocessor
 
 import (
 	"log"
+	"math"
 
 	metricspb "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1"
 )
@@ -272,13 +273,13 @@ func (mtp *metricsTransformProcessor) composeTimeseriesGroups(keyToTimeseriesMap
 			newPoints[pidxCounter] = &metricspb.Point{
 				Timestamp: points[0].Timestamp,
 			}
-			intPoint, doublePoint := mtp.compute(points, aggrType)
+			intPoint, doublePoint, distPoint := mtp.compute(points, aggrType)
 			if intPoint != nil {
 				newPoints[pidxCounter].Value = intPoint
 			} else if doublePoint != nil {
 				newPoints[pidxCounter].Value = doublePoint
 			} else {
-				newPoints[pidxCounter].Value = points[0].Value
+				newPoints[pidxCounter].Value = distPoint
 			}
 			pidxCounter++
 		}
@@ -296,9 +297,10 @@ func (mtp *metricsTransformProcessor) composeTimeseriesGroups(keyToTimeseriesMap
 }
 
 // compute merges points into one point based on the provided aggregation type
-func (mtp *metricsTransformProcessor) compute(points []*metricspb.Point, aggrType AggregationType) (*metricspb.Point_Int64Value, *metricspb.Point_DoubleValue) {
+func (mtp *metricsTransformProcessor) compute(points []*metricspb.Point, aggrType AggregationType) (*metricspb.Point_Int64Value, *metricspb.Point_DoubleValue, *metricspb.Point_DistributionValue) {
 	intVal := int64(0)
 	doubleVal := float64(0)
+	var distVal *metricspb.DistributionValue
 	if points[0].GetInt64Value() != 0 {
 		for _, p := range points {
 			if aggrType == Sum || aggrType == Average {
@@ -314,7 +316,7 @@ func (mtp *metricsTransformProcessor) compute(points []*metricspb.Point, aggrTyp
 		if aggrType == Average {
 			intVal /= int64(len(points))
 		}
-		return &metricspb.Point_Int64Value{Int64Value: intVal}, nil
+		return &metricspb.Point_Int64Value{Int64Value: intVal}, nil, nil
 	} else if points[0].GetDoubleValue() != 0 {
 		for _, p := range points {
 			if aggrType == Sum || aggrType == Average {
@@ -330,7 +332,63 @@ func (mtp *metricsTransformProcessor) compute(points []*metricspb.Point, aggrTyp
 		if aggrType == Average {
 			doubleVal /= float64(len(points))
 		}
-		return nil, &metricspb.Point_DoubleValue{DoubleValue: doubleVal}
+		return nil, &metricspb.Point_DoubleValue{DoubleValue: doubleVal}, nil
+	} else if points[0].GetDistributionValue() != nil && aggrType == Sum {
+		for _, p := range points {
+			if distVal == nil {
+				distVal = p.GetDistributionValue()
+				continue
+			}
+			if mtp.haveMatchingBounds(distVal, p.GetDistributionValue()) {
+				distVal = mtp.computeDistVals(distVal, p.GetDistributionValue())
+			}
+		}
+		return nil, nil, &metricspb.Point_DistributionValue{DistributionValue: distVal}
 	}
-	return nil, nil
+	return nil, nil, nil
+}
+
+func (mtp *metricsTransformProcessor) haveMatchingBounds(val1 *metricspb.DistributionValue, val2 *metricspb.DistributionValue) bool {
+	bounds1 := val1.BucketOptions.GetExplicit().Bounds
+	bounds2 := val2.BucketOptions.GetExplicit().Bounds
+	if len(bounds1) != len(bounds2) {
+		return false
+	}
+	for i, b := range bounds1 {
+		if b != bounds2[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// sumOfSquaredDeviation calculation
+// https://math.stackexchange.com/questions/2971315/how-do-i-combine-standard-deviations-of-two-groups
+// SSDcomb = SSD1 + n(ave(x) - ave(z))^2 + SSD2 +n(ave(y) - ave(z))^2
+func (mtp *metricsTransformProcessor) computeDistVals(val1 *metricspb.DistributionValue, val2 *metricspb.DistributionValue) *metricspb.DistributionValue {
+	buckets := make([]*metricspb.DistributionValue_Bucket, len(val1.Buckets))
+	for i := range buckets {
+		buckets[i] = &metricspb.DistributionValue_Bucket{
+			Count: val1.Buckets[i].Count + val2.Buckets[i].Count,
+		}
+	}
+	mean1 := val1.Sum / float64(val1.Count)
+	mean2 := val2.Sum / float64(val2.Count)
+	meanCombined := (val1.Sum + val2.Sum) / float64(val1.Count+val2.Count)
+	squaredMeanDiff1 := math.Pow(mean1-meanCombined, 2)
+	squaredMeanDiff2 := math.Pow(mean2-meanCombined, 2)
+	newDistVal := &metricspb.DistributionValue{
+		BucketOptions: &metricspb.DistributionValue_BucketOptions{
+			Type: &metricspb.DistributionValue_BucketOptions_Explicit_{
+				Explicit: &metricspb.DistributionValue_BucketOptions_Explicit{
+					Bounds: val1.BucketOptions.GetExplicit().Bounds,
+				},
+			},
+		},
+		Count:                 val1.Count + val2.Count,
+		Sum:                   val1.Sum + val2.Sum,
+		Buckets:               buckets,
+		SumOfSquaredDeviation: val1.SumOfSquaredDeviation + (float64(val1.Count) * squaredMeanDiff1) + val2.SumOfSquaredDeviation + (float64(val2.Count) * squaredMeanDiff2),
+	}
+	return newDistVal
 }
