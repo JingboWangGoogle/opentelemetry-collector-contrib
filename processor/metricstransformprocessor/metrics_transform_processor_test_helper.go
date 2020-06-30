@@ -20,6 +20,10 @@ import (
 	"go.opentelemetry.io/collector/consumer/consumerdata"
 )
 
+// clean TODO:
+// 1. move function construction to struct construction
+// 2. try to eliminate repitition in struct construction
+
 const (
 	metric1         = "metric1"
 	metric2         = "metric2"
@@ -69,16 +73,6 @@ type metricsTransformTest struct {
 
 var (
 	// test metrics
-	initialMetric = testMetric{
-		name:      metric1,
-		labelKeys: []string{label1, label2},
-		timeseries: []testTimeseries{
-			{
-				labelValues: []string{labelValue11, labelValue21},
-			},
-		},
-	}
-
 	initialMetricRename1 = testMetric{
 		name: metric1,
 	}
@@ -339,7 +333,7 @@ var (
 					Operations: []Operation{validUpdateLabelAggrSumOperation},
 				},
 			},
-			in:  []testMetric{inLabelAggrBuilder(1, 3, true, false)},
+			in:  []testMetric{initialLabelAggrBuilder(true, false)},
 			out: []testMetric{outLabelAggrBuilder(4, true, false)},
 		},
 		{
@@ -351,7 +345,7 @@ var (
 					Operations: []Operation{validUpdateLabelAggrAverageOperation},
 				},
 			},
-			in:  []testMetric{inLabelAggrBuilder(1, 3, true, false)},
+			in:  []testMetric{initialLabelAggrBuilder(true, false)},
 			out: []testMetric{outLabelAggrBuilder(2, true, false)},
 		},
 		{
@@ -363,7 +357,7 @@ var (
 					Operations: []Operation{validUpdateLabelAggrMaxOperation},
 				},
 			},
-			in:  []testMetric{inLabelAggrBuilder(3, 1, true, false)},
+			in:  []testMetric{initialLabelAggrBuilder(true, false)},
 			out: []testMetric{outLabelAggrBuilder(3, true, false)},
 		},
 		{
@@ -375,7 +369,7 @@ var (
 					Operations: []Operation{validUpdateLabelAggrSumOperation},
 				},
 			},
-			in:  []testMetric{inLabelAggrBuilder(1, 3, false, true)},
+			in:  []testMetric{initialLabelAggrBuilder(false, true)},
 			out: []testMetric{outLabelAggrBuilder(4, false, true)},
 		},
 		{
@@ -387,7 +381,7 @@ var (
 					Operations: []Operation{validUpdateLabelAggrAverageOperation},
 				},
 			},
-			in:  []testMetric{inLabelAggrBuilder(1, 3, false, true)},
+			in:  []testMetric{initialLabelAggrBuilder(false, true)},
 			out: []testMetric{outLabelAggrBuilder(2, false, true)},
 		},
 		{
@@ -399,7 +393,7 @@ var (
 					Operations: []Operation{validUpdateLabelAggrMaxOperation},
 				},
 			},
-			in:  []testMetric{inLabelAggrBuilder(3, 1, false, true)},
+			in:  []testMetric{initialLabelAggrBuilder(false, true)},
 			out: []testMetric{outLabelAggrBuilder(3, false, true)},
 		},
 		{
@@ -411,7 +405,7 @@ var (
 					Operations: []Operation{validUpdateLabelValuesAggrSumOperation},
 				},
 			},
-			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, true, false)},
+			in:  []testMetric{initialLabelValuesAggrBuilder(true, false)},
 			out: []testMetric{outLabelValuesAggrBuilder(4, true, false)},
 		},
 		{
@@ -423,7 +417,7 @@ var (
 					Operations: []Operation{validUpdateLabelValuesAggrAverageOperation},
 				},
 			},
-			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, true, false)},
+			in:  []testMetric{initialLabelValuesAggrBuilder(true, false)},
 			out: []testMetric{outLabelValuesAggrBuilder(2, true, false)},
 		},
 		{
@@ -435,7 +429,7 @@ var (
 					Operations: []Operation{validUpdateLabelValuesAggrMaxOperation},
 				},
 			},
-			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, true, false)},
+			in:  []testMetric{initialLabelValuesAggrBuilder(true, false)},
 			out: []testMetric{outLabelValuesAggrBuilder(3, true, false)},
 		},
 		{
@@ -447,7 +441,7 @@ var (
 					Operations: []Operation{validUpdateLabelValuesAggrSumOperation},
 				},
 			},
-			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, false, true)},
+			in:  []testMetric{initialLabelValuesAggrBuilder(false, true)},
 			out: []testMetric{outLabelValuesAggrBuilder(4, false, true)},
 		},
 		{
@@ -459,7 +453,7 @@ var (
 					Operations: []Operation{validUpdateLabelValuesAggrAverageOperation},
 				},
 			},
-			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, false, true)},
+			in:  []testMetric{initialLabelValuesAggrBuilder(false, true)},
 			out: []testMetric{outLabelValuesAggrBuilder(2, false, true)},
 		},
 		{
@@ -471,7 +465,7 @@ var (
 					Operations: []Operation{validUpdateLabelValuesAggrMaxOperation},
 				},
 			},
-			in:  []testMetric{inLabelValuesAggrBuilder(3, 1, false, true)},
+			in:  []testMetric{initialLabelValuesAggrBuilder(false, true)},
 			out: []testMetric{outLabelValuesAggrBuilder(3, false, true)},
 		},
 		{
@@ -483,58 +477,8 @@ var (
 					Operations: []Operation{validUpdateLabelAggrSumOperation},
 				},
 			},
-			in: []testMetric{distValueMetricBuilder(
-				[]string{label1, label2},
-				[][]string{
-					{labelValue11, labelValue21},
-					{labelValue11, labelValue22},
-				},
-				[]int64{1, 3},
-				[][]testPoint{
-					{
-						{
-							timestamp:             1,
-							count:                 3,
-							sum:                   6,
-							bounds:                []float64{1, 2},
-							buckets:               []int64{0, 1, 2},
-							sumOfSquaredDeviation: 3,
-						},
-					},
-					{
-						{
-							timestamp:             1,
-							count:                 5,
-							sum:                   10,
-							bounds:                []float64{1, 2},
-							buckets:               []int64{1, 1, 3},
-							sumOfSquaredDeviation: 4,
-						},
-					},
-				},
-			),
-			},
-			out: []testMetric{
-				distValueMetricBuilder(
-					[]string{label1},
-					[][]string{
-						{labelValue11},
-					},
-					[]int64{1},
-					[][]testPoint{
-						{
-							{
-								timestamp:             1,
-								count:                 8,
-								sum:                   16,
-								bounds:                []float64{1, 2},
-								buckets:               []int64{1, 2, 5},
-								sumOfSquaredDeviation: 7,
-							},
-						},
-					},
-				),
-			},
+			in:  []testMetric{initialDistValueMetricBuilder()},
+			out: []testMetric{outDistValueMetricBuilder()},
 		},
 		// INSERT
 		{
@@ -601,8 +545,8 @@ var (
 					Operations: []Operation{validUpdateLabelAggrSumOperation},
 				},
 			},
-			in:  []testMetric{inLabelAggrBuilder(1, 3, true, false)},
-			out: []testMetric{inLabelAggrBuilder(1, 3, true, false), outLabelAggrBuilder(4, true, false)},
+			in:  []testMetric{initialLabelAggrBuilder(true, false)},
+			out: []testMetric{initialLabelAggrBuilder(true, false), outLabelAggrBuilder(4, true, false)},
 		},
 		{
 			name: "metric_label_values_aggregation_sum_int_insert",
@@ -613,8 +557,8 @@ var (
 					Operations: []Operation{validUpdateLabelValuesAggrSumOperation},
 				},
 			},
-			in:  []testMetric{inLabelValuesAggrBuilder(1, 3, true, false)},
-			out: []testMetric{inLabelValuesAggrBuilder(1, 3, true, false), outLabelValuesAggrBuilder(4, true, false)},
+			in:  []testMetric{initialLabelValuesAggrBuilder(true, false)},
+			out: []testMetric{initialLabelValuesAggrBuilder(true, false), outLabelValuesAggrBuilder(4, true, false)},
 		},
 		{
 			name: "metric_label_values_aggregation_sum_distribution_insert",
@@ -625,89 +569,8 @@ var (
 					Operations: []Operation{validUpdateLabelAggrSumOperation},
 				},
 			},
-			in: []testMetric{
-				distValueMetricBuilder(
-					[]string{label1, label2},
-					[][]string{
-						{labelValue11, labelValue21},
-						{labelValue11, labelValue22},
-					},
-					[]int64{1, 3},
-					[][]testPoint{
-						{
-							{
-								timestamp:             1,
-								count:                 3,
-								sum:                   6,
-								bounds:                []float64{1, 2},
-								buckets:               []int64{0, 1, 2},
-								sumOfSquaredDeviation: 3,
-							},
-						},
-						{
-							{
-								timestamp:             1,
-								count:                 5,
-								sum:                   10,
-								bounds:                []float64{1, 2},
-								buckets:               []int64{1, 1, 3},
-								sumOfSquaredDeviation: 4,
-							},
-						},
-					},
-				),
-			},
-			out: []testMetric{
-				distValueMetricBuilder(
-					[]string{label1, label2},
-					[][]string{
-						{labelValue11, labelValue21},
-						{labelValue11, labelValue22},
-					},
-					[]int64{1, 3},
-					[][]testPoint{
-						{
-							{
-								timestamp:             1,
-								count:                 3,
-								sum:                   6,
-								bounds:                []float64{1, 2},
-								buckets:               []int64{0, 1, 2},
-								sumOfSquaredDeviation: 3,
-							},
-						},
-						{
-							{
-								timestamp:             1,
-								count:                 5,
-								sum:                   10,
-								bounds:                []float64{1, 2},
-								buckets:               []int64{1, 1, 3},
-								sumOfSquaredDeviation: 4,
-							},
-						},
-					},
-				),
-				distValueMetricBuilder(
-					[]string{label1},
-					[][]string{
-						{labelValue11},
-					},
-					[]int64{1},
-					[][]testPoint{
-						{
-							{
-								timestamp:             1,
-								count:                 8,
-								sum:                   16,
-								bounds:                []float64{1, 2},
-								buckets:               []int64{1, 2, 5},
-								sumOfSquaredDeviation: 7,
-							},
-						},
-					},
-				),
-			},
+			in:  []testMetric{initialDistValueMetricBuilder()},
+			out: []testMetric{initialDistValueMetricBuilder(), outDistValueMetricBuilder()},
 		},
 	}
 )
@@ -796,8 +659,41 @@ func constructTestInputMetricsData(test metricsTransformTest) consumerdata.Metri
 	return md
 }
 
+func initialLabelAggrBuilder(isInt bool, isDouble bool) testMetric {
+	return testMetric{
+		name:      metric1,
+		labelKeys: []string{label1, label2},
+		timeseries: []testTimeseries{
+			{
+				startTimestamp: 2,
+				labelValues:    []string{labelValue11, labelValue21},
+				points: []testPoint{
+					{
+						timestamp: 2,
+						value:     3,
+						isInt64:   isInt,
+						isDouble:  isDouble,
+					},
+				},
+			},
+			{
+				startTimestamp: 1,
+				labelValues:    []string{labelValue11, labelValue22},
+				points: []testPoint{
+					{
+						timestamp: 2,
+						value:     1,
+						isInt64:   isInt,
+						isDouble:  isDouble,
+					},
+				},
+			},
+		},
+	}
+}
+
 func outLabelAggrBuilder(value int, isInt bool, isDouble bool) testMetric {
-	outMetric := testMetric{
+	return testMetric{
 		name:      metric1,
 		labelKeys: []string{label1},
 		timeseries: []testTimeseries{
@@ -815,11 +711,10 @@ func outLabelAggrBuilder(value int, isInt bool, isDouble bool) testMetric {
 			},
 		},
 	}
-	return outMetric
 }
 
-func inLabelAggrBuilder(value1 int, value2 int, isInt bool, isDouble bool) testMetric {
-	outMetric := testMetric{
+func initialLabelValuesAggrBuilder(isInt bool, isDouble bool) testMetric {
+	return testMetric{
 		name:      metric1,
 		labelKeys: []string{label1, label2},
 		timeseries: []testTimeseries{
@@ -829,7 +724,7 @@ func inLabelAggrBuilder(value1 int, value2 int, isInt bool, isDouble bool) testM
 				points: []testPoint{
 					{
 						timestamp: 2,
-						value:     value1,
+						value:     1,
 						isInt64:   isInt,
 						isDouble:  isDouble,
 					},
@@ -837,11 +732,11 @@ func inLabelAggrBuilder(value1 int, value2 int, isInt bool, isDouble bool) testM
 			},
 			{
 				startTimestamp: 1,
-				labelValues:    []string{labelValue11, labelValue22},
+				labelValues:    []string{labelValue12, labelValue21},
 				points: []testPoint{
 					{
 						timestamp: 2,
-						value:     value2,
+						value:     3,
 						isInt64:   isInt,
 						isDouble:  isDouble,
 					},
@@ -849,7 +744,6 @@ func inLabelAggrBuilder(value1 int, value2 int, isInt bool, isDouble bool) testM
 			},
 		},
 	}
-	return outMetric
 }
 
 func outLabelValuesAggrBuilder(value int, isInt bool, isDouble bool) testMetric {
@@ -874,70 +768,68 @@ func outLabelValuesAggrBuilder(value int, isInt bool, isDouble bool) testMetric 
 	return outMetric
 }
 
-func inLabelValuesAggrBuilder(value1 int, value2 int, isInt bool, isDouble bool) testMetric {
-	outMetric := testMetric{
+func initialDistValueMetricBuilder() testMetric {
+	return testMetric{
 		name:      metric1,
 		labelKeys: []string{label1, label2},
 		timeseries: []testTimeseries{
 			{
-				startTimestamp: 2,
+				startTimestamp: 1,
 				labelValues:    []string{labelValue11, labelValue21},
 				points: []testPoint{
 					{
-						timestamp: 2,
-						value:     value1,
-						isInt64:   isInt,
-						isDouble:  isDouble,
+						timestamp:             1,
+						count:                 3,
+						sum:                   6,
+						bounds:                []float64{1, 2},
+						buckets:               []int64{0, 1, 2},
+						sumOfSquaredDeviation: 3,
+						isInt64:               false,
+						isDouble:              false,
 					},
 				},
 			},
 			{
-				startTimestamp: 1,
-				labelValues:    []string{labelValue12, labelValue21},
+				startTimestamp: 3,
+				labelValues:    []string{labelValue11, labelValue22},
 				points: []testPoint{
 					{
-						timestamp: 2,
-						value:     value2,
-						isInt64:   isInt,
-						isDouble:  isDouble,
+						timestamp:             1,
+						count:                 5,
+						sum:                   10,
+						bounds:                []float64{1, 2},
+						buckets:               []int64{1, 1, 3},
+						sumOfSquaredDeviation: 4,
+						isInt64:               false,
+						isDouble:              false,
 					},
 				},
 			},
 		},
 	}
-	return outMetric
 }
 
-func distValueMetricBuilder(labels []string, labelValuesSet [][]string, startTimestamps []int64, pointsSet [][]testPoint) testMetric {
-	timeseries := make([]testTimeseries, len(labelValuesSet))
-	for i := 0; i < len(timeseries); i++ {
-		points := make([]testPoint, len(pointsSet[i]))
-		for j := 0; j < len(points); j++ {
-			p := pointsSet[i][j]
-			points[j] = testPoint{
-				timestamp:             p.timestamp,
-				value:                 p.value,
-				count:                 p.count,
-				sum:                   p.sum,
-				bounds:                p.bounds,
-				buckets:               p.buckets,
-				sumOfSquaredDeviation: p.sumOfSquaredDeviation,
-				isInt64:               false,
-				isDouble:              false,
-			}
-		}
-
-		timeseries[i] = testTimeseries{
-			startTimestamp: startTimestamps[i],
-			labelValues:    labelValuesSet[i],
-			points:         points,
-		}
+func outDistValueMetricBuilder() testMetric {
+	return testMetric{
+		name:      metric1,
+		labelKeys: []string{label1},
+		timeseries: []testTimeseries{
+			{
+				startTimestamp: 1,
+				labelValues:    []string{labelValue11},
+				points: []testPoint{
+					{
+						timestamp:             1,
+						count:                 8,
+						sum:                   16,
+						bounds:                []float64{1, 2},
+						buckets:               []int64{1, 2, 5},
+						sumOfSquaredDeviation: 7,
+						isInt64:               false,
+						isDouble:              false,
+					},
+				},
+			},
+		},
 	}
-
-	outMetric := testMetric{
-		name:       metric1,
-		labelKeys:  labels,
-		timeseries: timeseries,
-	}
-	return outMetric
 }
