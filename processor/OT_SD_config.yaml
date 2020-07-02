@@ -1,0 +1,15 @@
+processors:
+    metricstransform:
+        // `host/cpu/time` to `agent.googleapis.com/cpu/usage_time`
+        transforms:
+            - metric_name: host/cpu/time
+              action: update
+              new_name: agent.googleapis.com/cpu/usage_time
+            - metric_name: host/memory/used
+              action: update
+              new_name: agent.googleapis.com/memory/bytes_used
+              operations:
+                - action: aggregation_label_values
+                  label: state
+                  aggregated_values: [slab_reclaimable, slab_unreclaimable]
+                  aggregation_type: sum
