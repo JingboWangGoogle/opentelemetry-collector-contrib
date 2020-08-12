@@ -933,5 +933,54 @@ var (
 					build(),
 			},
 		},
+		// g2c
+		{
+			name: "g2c int",
+			transforms: []internalTransform{
+				{
+					MetricName: "metric1",
+					Action:     Update,
+					Operations: []internalOperation{
+						{
+							configOperation: Operation{
+								Action: "g2c",
+							},
+						},
+					},
+				},
+				{
+					MetricName: "metric2",
+					Action:     Update,
+					Operations: []internalOperation{
+						{
+							configOperation: Operation{
+								Action: "g2c",
+							},
+						},
+					},
+				},
+				{
+					MetricName: "metric3",
+					Action:     Update,
+					Operations: []internalOperation{
+						{
+							configOperation: Operation{
+								Action: "g2c",
+							},
+						},
+					},
+				},
+			},
+			in: []*metricspb.Metric{
+				metricBuilder().setName("metric1").setDataType(metricspb.MetricDescriptor_GAUGE_INT64).build(),
+				metricBuilder().setName("metric2").setDataType(metricspb.MetricDescriptor_GAUGE_DOUBLE).build(),
+				metricBuilder().setName("metric3").setDataType(metricspb.MetricDescriptor_GAUGE_DISTRIBUTION).build(),
+			},
+			out: []*metricspb.Metric{
+				metricBuilder().setName("metric1").setDataType(metricspb.MetricDescriptor_CUMULATIVE_INT64).build(),
+				metricBuilder().setName("metric2").setDataType(metricspb.MetricDescriptor_CUMULATIVE_DOUBLE).build(),
+				metricBuilder().setName("metric3").setDataType(metricspb.MetricDescriptor_CUMULATIVE_DISTRIBUTION).build(),
+			},
+		},
 	}
 )

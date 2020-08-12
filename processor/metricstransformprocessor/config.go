@@ -138,6 +138,9 @@ const (
 	// DeleteLabelValue deletes a label value by also removing all the points associated with this label value
 	DeleteLabelValue OperationAction = "delete_label_value"
 
+	// G2C ...
+	G2C OperationAction = "g2c"
+
 	// Mean indicates taking the mean of the aggregated data.
 	Mean AggregationType = "mean"
 

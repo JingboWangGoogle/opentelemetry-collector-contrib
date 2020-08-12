@@ -133,6 +133,8 @@ func (mtp *metricsTransformProcessor) update(metric *metricspb.Metric, transform
 			mtp.addLabelOp(metric, op)
 		case DeleteLabelValue:
 			mtp.deleteLabelValueOp(metric, op)
+		case G2C:
+			mtp.g2cOp(metric)
 		}
 	}
 }
