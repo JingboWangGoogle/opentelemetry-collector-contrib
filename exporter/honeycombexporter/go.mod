@@ -7,7 +7,7 @@ require (
 	github.com/golang/protobuf v1.4.2
 	github.com/google/go-cmp v0.5.1
 	github.com/honeycombio/libhoney-go v1.12.4
-	github.com/klauspost/compress v1.10.10
+	github.com/klauspost/compress v1.11.6
 	github.com/stretchr/testify v1.6.1
 	go.opentelemetry.io/collector v0.7.1-0.20200807172154-11198b124dae
 	go.uber.org/zap v1.15.0
