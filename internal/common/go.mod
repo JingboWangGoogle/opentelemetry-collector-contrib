@@ -21,11 +21,9 @@ require (
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/sirupsen/logrus v1.6.0 // indirect
 	github.com/stretchr/testify v1.6.1
-	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e // indirect
 	google.golang.org/grpc v1.30.0 // indirect
 	gotest.tools v1.4.0 // indirect
-	k8s.io/client-go v0.18.6
-	k8s.io/utils v0.0.0-20200724153422-f32512634ab7 // indirect
+	k8s.io/client-go v0.21.0
 )
 
 // Yet another hack that we need until kubernetes client moves to the new github.com/googleapis/gnostic
