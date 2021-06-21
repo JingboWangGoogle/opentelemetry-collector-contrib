@@ -39,9 +39,9 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/wavefrontreceiver v0.0.0-00010101000000-000000000000
 	github.com/pavius/impi v0.0.3
 	github.com/stretchr/testify v1.6.1
-	github.com/tcnksm/ghr v0.13.0
+	github.com/tcnksm/ghr v0.14.0
 	go.opentelemetry.io/collector v0.7.1-0.20200807172154-11198b124dae
-	golang.org/x/sys v0.0.0-20200625212154-ddb9806d33ae
+	golang.org/x/sys v0.0.0-20210615035016-665e8c7367d1
 	honnef.co/go/tools v0.0.1-2020.1.5
 )
 
